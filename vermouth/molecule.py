@@ -78,8 +78,9 @@ class LinkPredicate:
         -------
         bool
         """
-
-        raise NotImplementedError
+        if isinstance(node.get(key), LinkPredicate):
+            val = node.get(key)
+            return val.value == self.value and val.__class__ == self.__class__
 
     def __repr__(self):
         return '<{} at {:x} value={}>'.format(self.__class__.__name__, id(self), self.value)
@@ -101,7 +102,7 @@ class Choice(LinkPredicate):
         """
         Apply the comparison.
         """
-        return node.get(key) in self.value
+        return node.get(key) in self.value and super().match(node, key)
 
 
 class NotDefinedOrNot(LinkPredicate):
@@ -126,7 +127,7 @@ class NotDefinedOrNot(LinkPredicate):
         """
         Apply the comparison.
         """
-        return key not in node or node[key] != self.value
+        return key not in node or node[key] != self.value and super().match(node, key)
 
 
 class LinkParameterEffector:
@@ -576,7 +577,7 @@ class Molecule(nx.Graph):
         """
         for node_idx in self:
             node = self.nodes[node_idx]
-            if all(node.get(attr, None) == val for attr, val in attrs.items()):
+            if attributes_match(node, attrs):
                 yield node_idx
 
     def __getattr__(self, name):
@@ -612,7 +613,7 @@ class Molecule(nx.Graph):
             A dict mapping the node indices of the added `molecule` to their
             new indices in this molecule.
         """
-        if self.force_field != molecule.force_field:
+        if self.force_field.name != molecule.force_field.name:
             raise ValueError(
                 'Cannot merge molecules with different force fields.'
             )
