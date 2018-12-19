@@ -78,9 +78,10 @@ class LinkPredicate:
         -------
         bool
         """
-        if isinstance(node.get(key), LinkPredicate):
-            val = node.get(key)
-            return val.value == self.value and val.__class__ == self.__class__
+        return self == node[key]
+
+    def __eq__(self, other):
+        return other.__class__ == self.__class__ and self.value == other.value
 
     def __repr__(self):
         return '<{} at {:x} value={}>'.format(self.__class__.__name__, id(self), self.value)
@@ -102,7 +103,7 @@ class Choice(LinkPredicate):
         """
         Apply the comparison.
         """
-        return node.get(key) in self.value and super().match(node, key)
+        return node.get(key) in self.value or super().match(node, key)
 
 
 class NotDefinedOrNot(LinkPredicate):
@@ -127,7 +128,7 @@ class NotDefinedOrNot(LinkPredicate):
         """
         Apply the comparison.
         """
-        return key not in node or node[key] != self.value and super().match(node, key)
+        return key not in node or node[key] != self.value or super().match(node, key)
 
 
 class LinkParameterEffector:
@@ -389,7 +390,9 @@ class Molecule(nx.Graph):
         -------
         Molecule
         """
-        return self.subgraph(self.nodes)
+        new = self.subgraph(self.nodes)
+        new.name = self.name
+        return new
 
     def subgraph(self, nodes):
         """
@@ -1079,7 +1082,7 @@ class Block(Molecule):
         return tuple(center) in all_centers
 
     def to_molecule(self, atom_offset=0, offset_resid=0, offset_charge_group=0,
-                    force_field=None):
+                    force_field=None, default_attributes=None):
         """
         Converts this block to a :class:`Molecule`.
 
@@ -1092,6 +1095,8 @@ class Block(Molecule):
         offset_charge_group: int
             The offset for the `charge_group` attributes.
         force_field: None or vermouth.forcefield.ForceField
+        default_attributes: collections.abc.Mapping[str]
+            Attributes to set to for nodes that are missing them.
 
         Returns
         -------
@@ -1100,14 +1105,16 @@ class Block(Molecule):
         """
         if force_field is None:
             force_field = self.force_field
+        if default_attributes is None:
+            default_attributes = {'resname': self.name}
         name_to_idx = {}
         mol = Molecule(force_field=force_field)
         for idx, node in enumerate(self.nodes, start=atom_offset):
             name_to_idx[node] = idx
             atom = self.nodes[node]
-            new_atom = copy.copy(atom)
+            new_atom = default_attributes.copy()
+            new_atom.update(copy.copy(atom))
             new_atom['resid'] = (new_atom.get('resid', 1) + offset_resid)
-            new_atom['resname'] = atom.get('resname', self.name)
             new_atom['charge_group'] = (new_atom.get('charge_group', 1)
                                         + offset_charge_group)
             mol.add_node(idx, **new_atom)

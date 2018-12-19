@@ -8,13 +8,13 @@ Created on Fri Dec 14 14:54:23 2018
 
 from .log_helpers import StyleAdapter, get_logger
 from .forcefield import FORCE_FIELDS
-from .ffinput import _tokenize, _parse_atom_attributes
+from .ffinput import _tokenize, _parse_atom_attributes, _parse_macro, _substitute_macros
 from .graph_utils import MappingGraphMatcher
+from .molecule import Block
 
-from collections import defaultdict
+
+from collections import defaultdict, deque
 from functools import partial
-
-import networkx as nx
 
 LOGGER = StyleAdapter(get_logger(__name__))
 
@@ -77,10 +77,13 @@ class Mapping:
                                       node_match=node_match,
                                       edge_match=edge_match)
         for match in matcher.subgraph_isomorphisms_iter():
+            rev_match = {v: k for k, v in match.items()}
+            
             new_match = defaultdict(dict)
             for graph_idx, from_idx in match.items():
                 new_match[graph_idx].update(self.mapping[from_idx])
-            yield new_match, self.blocks_to
+            references = {out_idx: rev_match[ref_idx] for out_idx, ref_idx in self.references.items()}
+            yield dict(new_match), self.blocks_to, references
 
     def _normalize_weights(self):
         # Normalize weights such that the the sum of the weights of nodes
@@ -110,48 +113,44 @@ class MappingBuilder:
     def from_ff(self, ff_name):
         self.ff_from = ff_name
 
+    def _add_block(self, current_block, new_block):
+        if current_block is None:
+            current_block = new_block.to_molecule(default_attributes={})
+        else:
+            current_block.merge_molecule(new_block)
+        return current_block
+
     def add_block_from(self, block):
-        self.names.append(block.name)
         block = block.copy()
         for node in block.nodes.values():
             if 'replace' in node:
                 node.update(node['replace'])
                 del node['replace']
-        if self.blocks_from is None:
-            self.blocks_from = nx.Graph(block)
-            self.blocks_from = block.to_molecule(force_field=FORCE_FIELDS[self.ff_from])
-        else:
-            block = block.to_molecule(force_field=FORCE_FIELDS[self.ff_from])
-            self.blocks_from.merge_molecule(block)
+        self.names.append(block.name)
+        self.blocks_from = self._add_block(self.blocks_from, block)
 
     def add_block_to(self, block):
-        block = block.copy()
-        for node in block.nodes.values():
-            if 'replace' in node:
-                node.update(node['replace'])
-                del node['replace']
-
-        if self.blocks_to is None:
-            self.blocks_to = block.to_molecule(force_field=FORCE_FIELDS[self.ff_to])
-        else:
-            block = block.to_molecule(force_field=FORCE_FIELDS[self.ff_to])
-            self.blocks_to.merge_molecule(block)
+        self.blocks_to = self._add_block(self.blocks_to, block)
 
     def add_node_from(self, attrs):
-        idx = max(self.blocks_from.nodes) + 1
+        if self.blocks_from is None:
+            self.blocks_from = Block()
+            idx = 1
+        else:
+            idx = max(self.blocks_from.nodes) + 1
         self.blocks_from.add_node(idx, **attrs)
-        print(self.blocks_from.nodes(data=True))
     
     def add_node_to(self, attrs):
-        idx = max(self.blocks_to.nodes) + 1
+        if self.blocks_to is None:
+            self.blocks_to = Block()
+            idx = 1
+        else:
+            idx = max(self.blocks_to.nodes) + 1
         self.blocks_to.add_node(idx, **attrs)
 
     def add_edge_from(self, attrs1, attrs2):
         nodes1 = list(self.blocks_from.find_atoms(**attrs1))
         nodes2 = list(self.blocks_from.find_atoms(**attrs2))
-        print(attrs1, nodes1)
-        print(attrs2, nodes2)
-        print(self.blocks_from.nodes(data=True))
         assert len(nodes1) == len(nodes2) == 1
         assert nodes1 != nodes2
         self.blocks_from.add_edge(nodes1[0], nodes2[0])
@@ -203,6 +202,7 @@ class MappingDirector:
         self.map_type = None
         self.from_ff = None
         self.to_ff = None
+        self.macros = {}
         self._current_id = {'from_': None, 'to_': None}
 
     def parse(self, file_handle):
@@ -230,26 +230,29 @@ class MappingDirector:
     @staticmethod
     def _is_section_header(line):
         return line.startswith('[') and line.endswith(']')
+    
+    @staticmethod
+    def _section_to_method(section):
+        method_name = '_' + section.replace(' ', '_')
+        return method_name
 
     def _parse_line(self, line, lineno):
+        line = _substitute_macros(line, self.macros)
+        method_name = self._section_to_method(self.section)
         try:
-            getattr(self, self.section)(line)
+            getattr(self, method_name)(line)
         except Exception:
             LOGGER.error("Problems parsing line {}. I think it should be a '{}'"
                          " line, but I can't parse it as such.",
                          lineno, self.section)
             raise
 
-    def __getattr__(self, key):
-        key = key.replace(' ', '_')
-        key = '_' + key
-        return self.__getattribute__(key)
-
     def _header(self, line):
         section = line.strip('[ ]').casefold()
+        method_name = self._section_to_method(section)
         try:
             if section not in self.MAP_TYPES:
-                getattr(self, section)
+                getattr(self, method_name)
         except AttributeError as err:
             raise KeyError('Section "{}" is unknown'.format(section)) from err
         else:
@@ -304,12 +307,15 @@ class MappingDirector:
                 id_ = id_[len(prefix):]
 
         if id_ is None:
-            attrs = self._current_id[prefix][0].copy()
+            attrs = self._current_id[prefix].copy()
         else:
-            attrs = self.identifiers[prefix + id_][0].copy()
+            attrs = self.identifiers[prefix + id_].copy()
             self._current_id[prefix] = self.identifiers[prefix + id_]
 
         attrs['atomname'] = name
+        if self.map_type == 'modification':
+            del attrs['resname']
+        
         return attrs
 
     def _to(self, line):
@@ -322,15 +328,17 @@ class MappingDirector:
 
     def _from_blocks(self, line):
         for identifier, attrs in self._parse_blocks(line):
-            block = get_block(self.from_ff, self.map_type, attrs['resname'])
-            self.builder.add_block_from(block)
-            self.identifiers['from_' + identifier] = attrs, block
+            if isinstance(attrs.get('resname'), str):
+                block = get_block(self.from_ff, self.map_type, attrs['resname'])
+                self.builder.add_block_from(block)
+            self.identifiers['from_' + identifier] = attrs
 
     def _to_blocks(self, line):
         for identifier, attrs in self._parse_blocks(line):
-            block = get_block(self.to_ff, self.map_type, attrs['resname'])
-            self.builder.add_block_to(block)
-            self.identifiers['to_' + identifier] = attrs, block
+            if isinstance(attrs.get('resname'), str):
+                block = get_block(self.to_ff, self.map_type, attrs['resname'])
+                self.builder.add_block_to(block)
+            self.identifiers['to_' + identifier] = attrs
 
     def _from_nodes(self, line):
         name, *attrs = _tokenize(line)
@@ -340,7 +348,6 @@ class MappingDirector:
             attrs = {}
         if 'atomname' not in attrs:
             attrs['atomname'] = name
-        print(0, attrs)
         self.builder.add_node_from(attrs)
     
     def _to_nodes(self, line):
@@ -358,20 +365,12 @@ class MappingDirector:
         at1, at2 = line.split()
         attrs1 = self._resolve_atom_spec(at1, 'from_')
         attrs2 = self._resolve_atom_spec(at2, 'from_')
-        # ..? For some reason modifications get a resname=''.
-        if self.map_type == 'modification':
-            attrs1['resname'] = ''
-            attrs2['resname'] = ''
         self.builder.add_edge_from(attrs1, attrs2)
 
     def _to_edges(self, line):
         at1, at2 = line.split()
         attrs1 = self._resolve_atom_spec(at1, 'to_')
         attrs2 = self._resolve_atom_spec(at2, 'to_')
-        # ..? For some reason modifications get a resname=''.
-        if self.map_type == 'modification':
-            attrs1['resname'] = ''
-            attrs2['resname'] = ''
         self.builder.add_edge_to(attrs1, attrs2)
 
     def _mapping(self, line):
@@ -383,18 +382,18 @@ class MappingDirector:
 
         attrs_from = self._resolve_atom_spec(from_, 'from_')
         attrs_to = self._resolve_atom_spec(to_, 'to_')
-        # ..? For some reason modifications get a resname=''.
-        if self.map_type == 'modification':
-            attrs_from['resname'] = ''
-            attrs_to['resname'] = ''
 
         self.builder.add_mapping(attrs_from, attrs_to, weight)
 
     def _reference_atoms(self, line):
         to_, from_ = line.split()
         attrs_to = self._resolve_atom_spec(to_, 'to_')
-        attrs_from = self._resolve_atom_spec(from_, 'to_')
+        attrs_from = self._resolve_atom_spec(from_, 'from_')
         self.builder.add_reference(attrs_to, attrs_from)
+
+    def _macros(self, line):
+        line = deque(_tokenize(line))
+        _parse_macro(line, self.macros)
 
 
 def parse_mapping_file(filepath):

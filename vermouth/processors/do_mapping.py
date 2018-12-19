@@ -32,34 +32,8 @@ from ..log_helpers import StyleAdapter, get_logger
 LOGGER = StyleAdapter(get_logger(__name__))
 
 
-#def build_graph_mapping_collection(from_ff, to_ff, mappings):
-#    graph_mapping_collection = {}
-#    pair_mapping = mappings[from_ff.name][to_ff.name]
-#    for name in from_ff.blocks.keys():
-#        if name in to_ff.blocks and name in pair_mapping:
-#            mapping, weights, extra = pair_mapping[name]
-#            new_mapping = []
-#            for from_id, to_ids in mapping.items():
-#                from_attr = dict(zip(('resid', 'atomname'), from_id))
-#                from_attr['resid'] += 1
-#                #from_attr['resname'] = name
-#                for to_id in to_ids:
-#                    to_attr = dict(zip(('resid', 'atomname'), to_id))
-#                    to_attr['resid'] += 1
-#                    #to_attr['resname'] = name
-#                    new_mapping.append((from_attr, to_attr, weights[to_id][from_id]))
-#            graph_mapping_collection[name] = Mapping(
-#                [from_ff.blocks[name], ],
-#                [to_ff.blocks[name], ],
-#                [],
-#                [],
-#                new_mapping,
-#                extra,
-#            )
-#    return graph_mapping_collection
-
-
 def build_graph_mapping_collection(from_ff, to_ff, mappings):
+    # FIXME!
     return parse_mapping_file('jon.map')
 
 
@@ -122,47 +96,13 @@ def get_mod_mappings(from_ff):
     """
     Returns a dict of all known modification mappings.
     """
+    # FIXME!
     mappings = parse_mapping_file('modifications.map')
     out = {}
     for mapping in mappings:
         if mapping.type == 'modification':
             out[mapping.names] = mapping
-    print(out)
     return out
-    
-    from_nodes = [
-        (0, {'atomname': 'CA', 'element': 'C'}),
-        (1, {'atomname': 'C', 'element': 'C'}),
-        (2, {'atomname': 'O1', 'element': 'O', 'replace': {'atomname': 'O1'}}),
-        (3, {'atomname': 'O2', 'element': 'O', 'PTM_atom': True, 'replace': {'atomname': 'O2'}}),
-        (4, {'atomname': 'N'}),
-        (5, {'atomname': 'HN'}),
-        (6, {'atomname': 'HA'}),
-    ]
-    from_edges = [(0, 1), (1, 2), (1, 3), (4, 5), (0, 4), (6, 0)]
-    from_block = Block(force_field='universal')
-    from_block.add_nodes_from(from_nodes)
-    from_block.add_edges_from(from_edges)
-
-    to_nodes = [(0, {'atomname': 'BB', 'replace': {'atype': "Qa", 'charge': -1}})]
-    to_block = Block(force_field='martini22')
-    to_block.add_nodes_from(to_nodes)
-
-    maps = [
-            ('CA', 'BB', 1),
-            ('C', 'BB', 1),
-            ('O1', 'BB', 1),
-            ('O2', 'BB', 1),
-            ('N', 'BB', 1),
-            ('HN', 'BB', 0),
-            ('HA', 'BB', 0),
-            ]
-
-    maps = [({'atomname': i[0]}, {'atomname': i[1]}, i[2]) for i in maps]
-
-    mapping = Mapping([from_block], [to_block], [], [], maps)
-    # FIXME
-    return {('C-ter',): mapping}
 
 
 def map_modifications(molecule, graph_out, mol_to_out, out_to_mol):
@@ -192,20 +132,17 @@ def map_modifications(molecule, graph_out, mol_to_out, out_to_mol):
     applied_interactions = defaultdict(lambda: defaultdict(list))
     to_remove = set()
     touched_atoms = defaultdict(list)
+    all_matches = []
     for mod_name in sorted(needed_mod_mappings, key=len, reverse=True):
-        print('Trying to map {}'.format(mod_name))
         mod_mapping = known_mod_mappings[mod_name]
-        print(mod_mapping.blocks_from.nodes(data=True))
-        print(mod_mapping.blocks_from.edges())
         # TODO: include modifications in matching criterion (just add it to the
         #       modification from-block).
         # For now, just make sure the intersection with the modified_nodes is
         # not empty.
-        for mol_to_mod, modification in mod_mapping.map(molecule, node_match=ptm_resname_match):
-            print('Fits!')
+        for mol_to_mod, modification, references in mod_mapping.map(molecule, node_match=ptm_resname_match):
             if not modified_nodes & set(mol_to_mod):
-                print("But not really :'(")
                 continue
+            all_matches.append((mol_to_mod, modification))
             LOGGER.info('Applying modification mapping {}', modification.name, type='general')
             mod_to_mol = defaultdict(dict)
             for mol_idx, mod_idxs in mol_to_mod.items():
@@ -228,7 +165,14 @@ def map_modifications(molecule, graph_out, mol_to_out, out_to_mol):
                     out_idx = max(graph_out) + 1
                     mod_to_out[mod_idx] = out_idx
                     graph_out.add_node(out_idx, **modification.nodes[mod_idx])
-                    # TODO: things like resid and chain.
+                    if mod_idx in references:
+                        ref = references[mod_idx]
+                        for attr in molecule.nodes[ref]:
+                            if attr not in graph_out.nodes[out_idx]:
+                                graph_out.nodes[out_idx][attr] = molecule.nodes[ref][attr]
+                    else:
+                        print("Don't know where to get attributes for {}"
+                              "".format(graph_out.nodes[out_idx]))
                 else:
                     # Node should already exists.
                     # Find the other mol nodes that map to this bead according
@@ -281,7 +225,7 @@ def map_modifications(molecule, graph_out, mol_to_out, out_to_mol):
                 LOGGER.warning('Interaction set by multiple modification '
                                'mappings', type='inconsistent-data')
 
-    return
+    return all_matches
 
 
 def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
@@ -341,9 +285,10 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
     out_to_mol = defaultdict(dict)
     overlapping_mappings = set()
     none_to_one_mappings = set()
+    all_references = {}
     # Sort by lowest node key per residue. We need to do this, since
     # merge_molecule creates new resid's in order.
-    for mol_to_block, blocks_to in sorted(all_matches, key=lambda x: min(x[0].keys())):
+    for mol_to_block, blocks_to, references in sorted(all_matches, key=lambda x: min(x[0].keys())):
         if graph_out.nrexcl is None:
             graph_out.nrexcl = blocks_to.nrexcl
         try:
@@ -381,6 +326,7 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
             for mol_idx in mol_to_block:
                 mol_to_out[mol_idx][spawned] = 0
                 out_to_mol[spawned][mol_idx] = 0
+        all_references.update(references)
     out_to_mol = dict(out_to_mol)
     mol_to_out = dict(mol_to_out)
 
@@ -393,22 +339,31 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
         graph_out.nodes[out_idx]['graph'] = subgraph
         weights = out_to_mol[out_idx]
         graph_out.nodes[out_idx]['mapping_weights'] = weights
-        # We drop the node keys, since those are not super relevant. We are
-        # just interested in values of the node attributes, and whether
-        # they're all equal.
-        attrs = {name: list(nx.get_node_attributes(subgraph, name).values())
-                 for name in attribute_keep}
-        for attr, vals in attrs.items():
-            if not are_all_equal(vals):
-                LOGGER.warning('The attribute {} for atom {} is going to'
-                               ' be garbage.', attr, format_atom_string(graph_out.nodes[out_idx]),
-                               type='inconsistent-data')
-            if vals:
-                graph_out.nodes[out_idx][attr] = vals[0]
-            else:
-                # No nodes hat the attribute `name`. And
-                # nx.get_node_attributes doesn't take a default.
-                graph_out.nodes[out_idx][attr] = None
+        if out_idx in all_references:
+            ref_idx = all_references[out_idx]
+            for attr, vals in molecule.nodes[ref_idx]:
+                if attr in attribute_keep:
+                    graph_out[out_idx][attr] = molecule.nodes[ref_idx][attr]
+        else:
+            # We drop the node keys, since those are not super relevant. We are
+            # just interested in values of the node attributes, and whether
+            # they're all equal.
+            attrs = {name: list(nx.get_node_attributes(subgraph, name).values())
+                     for name in attribute_keep}
+            for attr, vals in attrs.items():
+                if not are_all_equal(vals):
+                    LOGGER.warning('The attribute {} for atom {} is going to'
+                                   ' be garbage.', attr, format_atom_string(graph_out.nodes[out_idx]),
+                                   type='inconsistent-data')
+                if vals:
+                    graph_out.nodes[out_idx][attr] = vals[0]
+                else:
+                    # No nodes hat the attribute `name`. And
+                    # nx.get_node_attributes doesn't take a default.
+                    graph_out.nodes[out_idx][attr] = None
+
+    mod_matches = map_modifications(molecule, graph_out, mol_to_out, out_to_mol)
+    all_matches.extend(mod_matches)
 
     # We need to add edges between residues. Within residues comes from the
     # blocks.
@@ -426,7 +381,6 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
                 if out_idx != out_jdx:
                     graph_out.add_edge(out_idx, out_jdx)
 
-    map_modifications(molecule, graph_out, mol_to_out, out_to_mol)
 
     # Sanity check the results
     # "Many to one" mapping - overlapping blocks means dubious node properties
@@ -454,7 +408,7 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
                            'particles: {}, which are disconnected. There are '
                            'probably edges missing.',
                            format_atom_string(molecule.nodes[mol_idx]),
-                           {format_atom_string(graph_out.nodes[out_idx], atomid='', chain='')
+                           {format_atom_string(graph_out.nodes[out_idx], atomid='')
                             for out_idx in out_idxs},
                            type='inconsistent-data')
 
