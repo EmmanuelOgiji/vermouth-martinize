@@ -205,7 +205,7 @@ def allowed_ptms(residue, res_ptms, known_ptms):
         As returned by ``find_PTM_atoms``.
         Currently not used.
 
-    known_ptms : collections.abc.Iterable[networkx.Graph]
+    known_ptms : collections.abc.Mapping[str, networkx.Graph]
 
     Yields
     ------
@@ -299,7 +299,6 @@ def fix_ptm(molecule):
                 mol_node = molecule.nodes[mol_idx]
                 # Names of PTM atoms still need to be corrected, and for some
                 # non PTM atoms attributes need to change.
-                # Nodes with 'replace': {'atomname': None} will be removed.
                 if ptm_node['PTM_atom']:
                     mol_node['graph'] = molecule.subgraph([mol_idx]).copy()
                 if 'replace' in ptm_node:
@@ -309,14 +308,14 @@ def fix_ptm(molecule):
                             mol_node['_old_atomname'] = mol_node['atomname']
                         # This can't be done anymore, since mapping would then
                         # break due to missing atoms.
-                        #if attr_name == 'atomname' and val is None:
-                        #    LOGGER.debug('Removing atom {}',
-                        #                 format_atom_string(mol_node),
-                        #                 type='remove-atom')
-                        #    molecule.remove_node(mol_idx)
-                        #    n_idxs.remove(mol_idx)
-                        #    resid_to_idxs[mol_node['resid']].remove(mol_idx)
-                        #    break
+                        # if attr_name == 'atomname' and val is None:
+                        #     LOGGER.debug('Removing atom {}',
+                        #                  format_atom_string(mol_node),
+                        #                  type='remove-atom')
+                        #     molecule.remove_node(mol_idx)
+                        #     n_idxs.remove(mol_idx)
+                        #     resid_to_idxs[mol_node['resid']].remove(mol_idx)
+                        #     break
                         if mol_node.get(attr_name) != val:
                             fmt = 'Changing attribute {} from {} to {} for atom {}'
                             LOGGER.debug(fmt, attr_name, mol_node.get(attr_name),
