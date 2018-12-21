@@ -23,6 +23,7 @@ from .ffinput import _tokenize, _parse_atom_attributes, _parse_macro, _substitut
 from .graph_utils import MappingGraphMatcher
 from .log_helpers import StyleAdapter, get_logger
 from .molecule import Block
+from .parser_utils import section_parser, parser_class
 
 
 LOGGER = StyleAdapter(get_logger(__name__))
@@ -106,7 +107,7 @@ class Mapping:
     """
     def __init__(self, block_from, block_to, mapping, references,
                  ff_from=None, ff_to=None, extra=(), normalize_weights=False,
-                 names=tuple()):
+                 type='block', names=tuple()):
         self.blocks_from = block_from
         self.blocks_to = block_to
         self.blocks_to.extra = extra
@@ -115,6 +116,7 @@ class Mapping:
         self.ff_to = ff_to
         self.names = names
         self.mapping = mapping
+        self.type = type
         # Remove nodes not mapped from blocks_from
         unmapped = set(self.blocks_from.nodes.keys()) - set(self.mapping.keys())
         self.blocks_from.remove_nodes_from(unmapped)
@@ -449,7 +451,7 @@ class MappingBuilder:
         assert len(nodes_from) == 1
         self.references[node_to] = next(iter(nodes_from))
 
-    def get_mapping(self):
+    def get_mapping(self, type):
         """
         Instantiate a :class:`Mapping` object with the information accumulated
         so far, and return it.
@@ -463,10 +465,10 @@ class MappingBuilder:
             return None
         mapping = Mapping(self.blocks_from, self.blocks_to, dict(self.mapping),
                           self.references, ff_from=self.ff_from, ff_to=self.ff_to,
-                          names=tuple(self.names))
+                          type=type, names=tuple(self.names))
         return mapping
 
-
+@parser_class
 class MappingDirector:
     """
     A director in charge of parsing the new mapping format. It constructs a new
@@ -507,6 +509,7 @@ class MappingDirector:
     RESNAME_NUM_SEP = '#'
     RESIDUE_ATOM_SEP = ':'
     MAP_TYPES = ['block', 'modification']
+    METH_DICT = {}
 
     def __init__(self, builder=None):
         if builder is None:
@@ -552,9 +555,9 @@ class MappingDirector:
             if not line:
                 continue
             if self._is_section_header(line):
-                new_mapping = self._header(line)
+                new_mapping = self._header(line, lineno)
                 if new_mapping:
-                    mapping = self.builder.get_mapping()
+                    mapping = self.builder.get_mapping(self.map_type)
                     if mapping is not None:
                         yield mapping
                     self._reset_mapping()
@@ -580,25 +583,6 @@ class MappingDirector:
         """
         return line.startswith('[') and line.endswith(']')
 
-    @staticmethod
-    def _section_to_method(section):
-        """
-        Translates `section` to a method name by replacing all spaces with
-        underscores, and prefixes it with an underscore.
-
-        Parameters
-        ----------
-        section: str
-            A line of text.
-
-        Returns
-        -------
-        str
-            The translation of `section` to a method name.
-        """
-        method_name = '_' + section.replace(' ', '_')
-        return method_name
-
     def _parse_line(self, line, lineno):
         """
         Parse `line` with line number `lineno`.
@@ -613,16 +597,20 @@ class MappingDirector:
         None
         """
         line = _substitute_macros(line, self.macros)
-        method_name = self._section_to_method(self.section)
+        if self.section not in self.METH_DICT:
+            LOGGER.error("Can't parse line {} in section '{}' because the "
+                         "section is unknown", lineno, self.section)
+            return
+
         try:
-            getattr(self, method_name)(line)
+            self.METH_DICT[self.section](self, line, lineno)
         except Exception:
             LOGGER.error("Problems parsing line {}. I think it should be a '{}'"
                          " line, but I can't parse it as such.",
                          lineno, self.section)
             raise
 
-    def _header(self, line):
+    def _header(self, line, lineno=0):
         """
         Parses a section header. Sets :attr:`section` and :attr:`map_type` when
         applicable. Does not check whether `line` is a valid section header.
@@ -642,19 +630,17 @@ class MappingDirector:
             If the section header is unknown.
         """
         section = line.strip('[ ]').casefold()
-        method_name = self._section_to_method(section)
-        try:
-            if section not in self.MAP_TYPES:
-                getattr(self, method_name)
-        except AttributeError as err:
-            raise KeyError('Section "{}" is unknown'.format(section)) from err
+        self.section = section
+        if section not in self.MAP_TYPES and section not in self.METH_DICT:
+            LOGGER.error("Section '{}' on line {} is unknown. The following "
+                         "sections are known: {}.", section, lineno,
+                         list(self.METH_DICT.keys()) + self.MAP_TYPES) 
+
+        if section in self.MAP_TYPES:
+            self.map_type = section
+            return True
         else:
-            self.section = section
-            if section in self.MAP_TYPES:
-                self.map_type = section
-                return True
-            else:
-                return False
+            return False
 
     def _parse_blocks(self, line):
         """
@@ -754,7 +740,8 @@ class MappingDirector:
 
         return attrs
 
-    def _to(self, line):
+    @section_parser('to')
+    def _to(self, line, lineno=0):
         """
         Parses a "to" section and sets :attr:`to_ff`.
 
@@ -765,7 +752,8 @@ class MappingDirector:
         self.to_ff = line
         self.builder.to_ff(self.to_ff)
 
-    def _from(self, line):
+    @section_parser('from')
+    def _from(self, line, lineno=0):
         """
         Parses a "from" section and sets :attr:`from_ff`.
 
@@ -776,7 +764,8 @@ class MappingDirector:
         self.from_ff = line
         self.builder.from_ff(self.from_ff)
 
-    def _from_blocks(self, line):
+    @section_parser('from blocks')
+    def _from_blocks(self, line, lineno=0):
         """
         Parses a "from blocks" section and add to :attr:`identifiers`. Calls
         :method:`builder.add_block_from`.
@@ -791,7 +780,8 @@ class MappingDirector:
                 self.builder.add_block_from(block)
             self.identifiers['from_' + identifier] = attrs
 
-    def _to_blocks(self, line):
+    @section_parser('to blocks')
+    def _to_blocks(self, line, lineno=0):
         """
         Parses a "to blocks" section and add to :attr:`identifiers`. Calls
         :method:`builder.add_block_to`.
@@ -806,7 +796,8 @@ class MappingDirector:
                 self.builder.add_block_to(block)
             self.identifiers['to_' + identifier] = attrs
 
-    def _from_nodes(self, line):
+    @section_parser('from nodes')
+    def _from_nodes(self, line, lineno=0):
         """
         Parses a "from nodes" section. Calls :method:`builder.add_node_from`.
 
@@ -823,7 +814,8 @@ class MappingDirector:
             attrs['atomname'] = name
         self.builder.add_node_from(attrs)
 
-    def _to_nodes(self, line):
+    @section_parser('to nodes')
+    def _to_nodes(self, line, lineno=0):
         """
         Parses a "to nodes" section. Calls :method:`builder.add_node_to`.
 
@@ -841,7 +833,8 @@ class MappingDirector:
             attrs['atomname'] = name
         self.builder.add_node_to(attrs)
 
-    def _from_edges(self, line):
+    @section_parser('from edges')
+    def _from_edges(self, line, lineno=0):
         """
         Parses a "from edges" section. Calls :method:`builder.add_edge_from`.
 
@@ -854,7 +847,8 @@ class MappingDirector:
         attrs2 = self._resolve_atom_spec(at2, 'from_')
         self.builder.add_edge_from(attrs1, attrs2)
 
-    def _to_edges(self, line):
+    @section_parser('to edges')
+    def _to_edges(self, line, lineno=0):
         """
         Parses a "to edges" section. Calls :method:`builder.add_edge_to`.
 
@@ -867,7 +861,8 @@ class MappingDirector:
         attrs2 = self._resolve_atom_spec(at2, 'to_')
         self.builder.add_edge_to(attrs1, attrs2)
 
-    def _mapping(self, line):
+    @section_parser('mapping')
+    def _mapping(self, line, lineno=0):
         """
         Parses a "mapping" section. Calls :method:`builder.add_mapping`.
 
@@ -886,7 +881,8 @@ class MappingDirector:
 
         self.builder.add_mapping(attrs_from, attrs_to, weight)
 
-    def _reference_atoms(self, line):
+    @section_parser('reference atoms')
+    def _reference_atoms(self, line, lineno=0):
         """
         Parses a "reference atom" section. Calls
         :method:`builder.add_reference`.
@@ -900,7 +896,8 @@ class MappingDirector:
         attrs_from = self._resolve_atom_spec(from_, 'from_')
         self.builder.add_reference(attrs_to, attrs_from)
 
-    def _macros(self, line):
+    @section_parser('macros')
+    def _macros(self, line, lineno=0):
         """
         Parses a "macros" section. Adds to :attr:`macros`.
 
