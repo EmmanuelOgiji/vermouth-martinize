@@ -166,7 +166,7 @@ def test_peptide():
     ile = {(0, 'C'): [(0, 'BB')], (0, 'N'): [(0, 'BB')], (0, 'O'): [(0, 'BB')], (0, 'CA'): [(0, 'BB')],
            (0, 'CB'): [(0, 'SC1')], (0, 'CG1'): [(0, 'SC1')], (0, 'CG2'): [(0, 'SC1')], (0, 'CD'): [(0, 'SC1')]}
     leu = {(0, 'C'): [(0, 'BB')], (0, 'N'): [(0, 'BB')], (0, 'O'): [(0, 'BB')], (0, 'CA'): [(0, 'BB')],
-           (0, 'CB'): [(0, 'SC1')], (0, 'CG1'): [(0, 'SC1')], (0, 'CD1'): [(0, 'SC1')], (0, 'CD2'): [(0, 'SC1')]}
+           (0, 'CB'): [(0, 'SC1')], (0, 'CG'): [(0, 'SC1')], (0, 'CD1'): [(0, 'SC1')], (0, 'CD2'): [(0, 'SC1')]}
     extra = ()
     mappings = {'universal': {'martini22': {'GLY': (gly, _map_weights(gly), extra),
                                             'ILE': (ile, _map_weights(ile), extra),
@@ -234,7 +234,12 @@ def test_peptide():
     
     for node in expected:
         expected.nodes[node]['atomid'] = node + 1
-    
+    print(cg.nodes(data=True))
+    print(cg.edges())
+    print('-'*80)
+    print(expected.nodes(data=True))
+    print(expected.edges())
+
     assert _equal_graphs(cg, expected)
 
 if __name__ == '__main__':

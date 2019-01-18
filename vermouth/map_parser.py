@@ -29,28 +29,6 @@ from .parser_utils import section_parser, parser_class
 LOGGER = StyleAdapter(get_logger(__name__))
 
 
-def get_block(ff_name, type, resname):
-    """
-    Helper method that gets a a block associated with a name and a type from
-    a specific :class:`vermouth.forcefield.ForceField`.
-
-    Parameters
-    ----------
-    ff_name: str
-        The name of the force field.
-    type: str
-        The type of block to get, e.g. "block" or "modification".
-    resname: str
-        The name of the block to get.
-
-    Returns
-    -------
-    vermouth.molecule.Block or vermouth.molecule.Link
-        The found block.
-    """
-    return getattr(FORCE_FIELDS[ff_name], type+'s')[resname]
-
-
 class Mapping:
     """
     A mapping object that describes a mapping from one resolution to another.
@@ -177,6 +155,8 @@ class Mapping:
             :attr:`mapping` has been applied.
         """
         if node_match is None:
+            # TODO: Leave node (and edge)_match to None, since that defaults
+            #       to "no check" in the isomorphism code.
             def node_match(node1, node2):
                 return True
 
@@ -278,8 +258,8 @@ class MappingBuilder:
     @staticmethod
     def _add_block(current_block, new_block):
         """
-        Helper method that adds `new_block` to `current_block`, if the latteris
-        not `None`. Otherwise, create a new block from `new_block`.
+        Helper method that adds `new_block` to `current_block`, if the latter 
+        is not `None`. Otherwise, create a new block from `new_block`.
 
         Parameters
         ----------
@@ -468,7 +448,7 @@ class MappingBuilder:
                           type=type, names=tuple(self.names))
         return mapping
 
-@parser_class
+@parser_class(attr_name='_section_name')
 class MappingDirector:
     """
     A director in charge of parsing the new mapping format. It constructs a new
@@ -522,7 +502,7 @@ class MappingDirector:
         """
         Reinitialize attributes for a new mapping.
         """
-        self._current_id = {'from_': None, 'to_': None}
+        self._current_id = {'from': None, 'to': None}
         self.identifiers = {}
         self.builder.reset()
         self.from_ff = None
@@ -541,7 +521,7 @@ class MappingDirector:
         """
         Parse the data in `file_handle`.
 
-        file_handle: io.TextIOBase
+        file_handle: collections.abc.Iterable[str]
             The data stream to parse.
 
         Yields
@@ -598,17 +578,14 @@ class MappingDirector:
         """
         line = _substitute_macros(line, self.macros)
         if self.section not in self.METH_DICT:
-            LOGGER.error("Can't parse line {} in section '{}' because the "
-                         "section is unknown", lineno, self.section)
-            return
-
+            raise IOError("Can't parse line {} in section '{}' because the "
+                          "section is unknown".format(lineno, self.section))
         try:
             self.METH_DICT[self.section](self, line, lineno)
-        except Exception:
-            LOGGER.error("Problems parsing line {}. I think it should be a '{}'"
-                         " line, but I can't parse it as such.",
-                         lineno, self.section)
-            raise
+        except Exception as error:
+            raise IOError("Problems parsing line {}. I think it should be a "
+                          "'{}' line, but I can't parse it as such."
+                          "".format(lineno, self.section)) from error
 
     def _header(self, line, lineno=0):
         """
@@ -632,9 +609,10 @@ class MappingDirector:
         section = line.strip('[ ]').casefold()
         self.section = section
         if section not in self.MAP_TYPES and section not in self.METH_DICT:
-            LOGGER.error("Section '{}' on line {} is unknown. The following "
-                         "sections are known: {}.", section, lineno,
-                         list(self.METH_DICT.keys()) + self.MAP_TYPES) 
+            raise IOError("Section '{}' on line {} is unknown. The following "
+                          "sections are known: {}."
+                          "".format(section, lineno,
+                                    list(self.METH_DICT.keys()) + self.MAP_TYPES))
 
         if section in self.MAP_TYPES:
             self.map_type = section
@@ -723,16 +701,15 @@ class MappingDirector:
             id_, name = None, atom_str
 
         if id_ is None:
-            options = {name for name in self.identifiers if name.startswith(prefix)}
+            options = {name[1] for name in self.identifiers if name[0] == prefix}
             if len(options) == 1:
                 id_ = next(iter(options))
-                id_ = id_[len(prefix):]
 
         if id_ is None:
             attrs = self._current_id[prefix].copy()
         else:
-            attrs = self.identifiers[prefix + id_].copy()
-            self._current_id[prefix] = self.identifiers[prefix + id_]
+            attrs = self.identifiers[(prefix, id_)].copy()
+            self._current_id[prefix] = self.identifiers[(prefix, id_)]
 
         attrs['atomname'] = name
         if self.map_type == 'modification':
@@ -775,10 +752,10 @@ class MappingDirector:
         line: str
         """
         for identifier, attrs in self._parse_blocks(line):
-            if isinstance(attrs.get('resname'), str):
+            if attrs.get('resname') is not None:
                 block = get_block(self.from_ff, self.map_type, attrs['resname'])
                 self.builder.add_block_from(block)
-            self.identifiers['from_' + identifier] = attrs
+            self.identifiers[('from', identifier)] = attrs
 
     @section_parser('to blocks')
     def _to_blocks(self, line, lineno=0):
@@ -794,7 +771,7 @@ class MappingDirector:
             if isinstance(attrs.get('resname'), str):
                 block = get_block(self.to_ff, self.map_type, attrs['resname'])
                 self.builder.add_block_to(block)
-            self.identifiers['to_' + identifier] = attrs
+            self.identifiers[('to',  identifier)] = attrs
 
     @section_parser('from nodes')
     def _from_nodes(self, line, lineno=0):
@@ -843,8 +820,8 @@ class MappingDirector:
         line: str
         """
         at1, at2 = line.split()
-        attrs1 = self._resolve_atom_spec(at1, 'from_')
-        attrs2 = self._resolve_atom_spec(at2, 'from_')
+        attrs1 = self._resolve_atom_spec(at1, 'from')
+        attrs2 = self._resolve_atom_spec(at2, 'from')
         self.builder.add_edge_from(attrs1, attrs2)
 
     @section_parser('to edges')
@@ -857,8 +834,8 @@ class MappingDirector:
         line: str
         """
         at1, at2 = line.split()
-        attrs1 = self._resolve_atom_spec(at1, 'to_')
-        attrs2 = self._resolve_atom_spec(at2, 'to_')
+        attrs1 = self._resolve_atom_spec(at1, 'to')
+        attrs2 = self._resolve_atom_spec(at2, 'to')
         self.builder.add_edge_to(attrs1, attrs2)
 
     @section_parser('mapping')
@@ -876,8 +853,8 @@ class MappingDirector:
         else:
             weight = 1
 
-        attrs_from = self._resolve_atom_spec(from_, 'from_')
-        attrs_to = self._resolve_atom_spec(to_, 'to_')
+        attrs_from = self._resolve_atom_spec(from_, 'from')
+        attrs_to = self._resolve_atom_spec(to_, 'to')
 
         self.builder.add_mapping(attrs_from, attrs_to, weight)
 
@@ -892,8 +869,8 @@ class MappingDirector:
         line: str
         """
         to_, from_ = line.split()
-        attrs_to = self._resolve_atom_spec(to_, 'to_')
-        attrs_from = self._resolve_atom_spec(from_, 'from_')
+        attrs_to = self._resolve_atom_spec(to_, 'to')
+        attrs_from = self._resolve_atom_spec(from_, 'from')
         self.builder.add_reference(attrs_to, attrs_from)
 
     @section_parser('macros')
@@ -927,3 +904,25 @@ def parse_mapping_file(filepath):
         director = MappingDirector()
         mappings = list(director.parse(map_in))
     return mappings
+
+
+def get_block(ff_name, type, blockname):
+    """
+    Helper method that gets a a block associated with a name and a type from
+    a specific :class:`vermouth.forcefield.ForceField`.
+
+    Parameters
+    ----------
+    ff_name: str
+        The name of the force field.
+    type: str
+        The type of block to get, e.g. "block" or "modification".
+    blockname: str
+        The name of the block to get.
+
+    Returns
+    -------
+    vermouth.molecule.Block or vermouth.molecule.Link
+        The found block.
+    """
+    return getattr(FORCE_FIELDS[ff_name], type+'s')[blockname]

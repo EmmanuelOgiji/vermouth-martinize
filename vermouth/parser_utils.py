@@ -16,14 +16,18 @@
 Helper functions for parsers
 """
 
-def parser_class(cls):
-    if not hasattr(cls, 'METH_DICT'):
-        raise TypeError('Must have a METH_DICT attribute.')
-    for attribute_name in dir(cls):
-        attribute = getattr(cls, attribute_name)
-        if hasattr(attribute, '_section_name'):
-            cls.METH_DICT[attribute._section_name] = attribute
-    return cls
+
+def parser_class(dict_name='METH_DICT', attr_name='_name'):
+    def _parser_class(cls):
+        if not hasattr(cls, dict_name):
+            setattr(cls, dict_name, {})
+        mapping = getattr(cls, dict_name)
+        for attribute_name in dir(cls):
+            attribute = getattr(cls, attribute_name)
+            if hasattr(attribute, attr_name):
+                mapping[getattr(attribute, attr_name)] = attribute
+        return cls
+    return _parser_class
 
 
 def section_parser(name):
