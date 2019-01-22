@@ -51,7 +51,7 @@ def edge_matcher(graph1, graph2, node11, node12, node21, node22):
 
 
 def node_matcher(node1, node2):
-    return attributes_match(node1, node2, ignore_keys=('atype', 'charge', 'charge_group', 'resid', 'replace'))
+    return attributes_match(node1, node2, ignore_keys=('atype', 'charge', 'charge_group', 'resid', 'replace', '_old_atomname'))
 
 
 def _old_atomname_match(node1, node2):
