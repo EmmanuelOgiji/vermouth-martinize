@@ -19,21 +19,50 @@ from .ffinput import _tokenize, _parse_macro, _substitute_macros
 from collections import deque
 
 
+# This file contains helper methods and infrastructure for parsers. The class
+# SectionLineParser in particular is a powerful tool that is intended to make
+# parsing section based files easier. There's a fair chance it turned out to be
+# a multi-tentacled Lovecraftion horror that's in charge of slightly magical
+# switchboard. If it ever breaks I'm very sorry for you. Pray to your deity of
+# choice and prepare your sacrificial chicken.
+
+
 class SectionParser(type):
+    """
+    Metaclass (!) that populates the `METH_DICT` attribute of new classes. The
+    contents of `METH_DICT` are set by reading the `_section_names` attribute
+    of all its attributes. You can conveniently set `_section_names` attributes
+    using the :meth:`section_parser` decorator.
+    """
     def __new__(cls, name, bases, attrs, **kwargs):
         obj = super().__new__(cls, name, bases, attrs, **kwargs)
         if not hasattr(obj, 'METH_DICT'):
             obj.METH_DICT = {}
         mapping = obj.METH_DICT
+
         for attribute_name in dir(obj):
             attribute = getattr(obj, attribute_name)
-            if hasattr(attribute, '_section_names'):
-                for names, kwargs in attribute._section_names.items():
+            try:
+                section_names = attribute._section_names
+            except AttributeError:
+                pass
+            else:
+                for names, kwargs in section_names.items():
                     mapping[names] = (attribute, kwargs)
         return obj
 
     @staticmethod
     def section_parser(*names, **kwargs):
+        """
+        Parameters
+        ----------
+        names: tuple[collections.abc.Hashable]
+            The section names that should be associated with the decorated
+            function.
+        kwargs: dict[str]
+            The keyword arguments with which the decorated function should be
+            called.
+        """
         def wrapper(method):
             if not hasattr(method, '_section_names'):
                 method._section_names = {}
@@ -43,6 +72,18 @@ class SectionParser(type):
 
 
 class LineParser:
+    """
+    Class that describes a parser object that parses a file line by line.
+    Subclasses will probably want to override the methods :meth:`dispatch`,
+    :meth:`parse_line`, and/or :meth:`finalize`:
+
+      - :meth:`dispatch` is called for every line and should return the
+        function that should be used to parse that line.
+      - :meth:`parse_line` is called by the default implementation of
+        :meth:`dispatch` for every line.
+      - :meth:`finalize` is called at the end of the file.
+    """
+    COMMENT_CHAR = '#'
     def parse(self, file_handle):
         """
         Reads lines from `file_handle`, and calls :meth:`dispatch` to find
@@ -51,6 +92,8 @@ class LineParser:
         At the end, calls :meth:`finalize`, and yields its results, iff
         it's not None.
 
+        Parameters
+        ----------
         file_handle: collections.abc.Iterable[str]
             The data to parse. Should produce lines of data.
 
@@ -73,10 +116,16 @@ class LineParser:
         if result is not None:
             yield result
 
+    def finalize(self, lineno=0):
+        """
+        Wraps up. Is called at the end of the file.
+        """
+        return
+
     def dispatch(self, line):
         """
-        Finds the correct method to parse `line`. Currently always returns
-        :meth:`parse_line`
+        Finds the correct method to parse `line`. Always returns
+        :meth:`parse_line`.
         """
         return self.parse_line
 
@@ -88,11 +137,28 @@ class LineParser:
 
 
 class SectionLineParser(LineParser, metaclass=SectionParser):
+    """
+    Baseclass for all parsers that have to parse file formats that are based on
+    sections. Parses the `macros` section.
+    Subclasses will probably want to override :meth:`finalize` and/or
+    :meth:`finalize_section`.
+
+    :meth:`finalize_section` is called with the previous section whenever a
+    section ends.
+
+    Attributes
+    ----------
+    section: list[str]
+        The current section.
+    macros: dict[str, str]
+        A set of subsitution rules as parsed from a `macros` section.
+    METH_DICT: dict[tuple[str], tuple[collections.abc.Callable, dict[str]]]
+        A dict of all known parser methods, mapping section names to the
+        function to be called and the associated keyword arguments.
+    """
     def __init__(self, *args, **kwargs):
         self.macros = {}
-        self.section = None
-        # TODO: get rid of map_type
-        self.map_type = None
+        self.section = []
         super().__init__(*args, **kwargs)
 
     def dispatch(self, line):
@@ -108,7 +174,8 @@ class SectionLineParser(LineParser, metaclass=SectionParser):
 
         Returns
         -------
-        callable
+        collections.abc.Callable
+            The method that should be used to parse `line`.
         """
         if self.is_section_header(line):
             return self.parse_header
@@ -120,14 +187,14 @@ class SectionLineParser(LineParser, metaclass=SectionParser):
         Called after the last line has been parsed to wrap up. Resets
         the instance and calls :meth:`finalize_section`.
         """
-        result = self.finalize_section(self.section)
+        prev_section = self.section
+        self.section = []
+        result = self.finalize_section(prev_section)
         self.macros = {}
         self.section = None
-        # TODO: get rid of map_type
-        self.map_type = None
         return result
 
-    def finalize_section(self, section_name):
+    def finalize_section(self, previous_section):
         """
         Called once a section is finished. Currently does nothing.
         """
@@ -149,11 +216,11 @@ class SectionLineParser(LineParser, metaclass=SectionParser):
             The result returned by calling the registered method.
         """
         line = _substitute_macros(line, self.macros)
-        if self.section not in self.METH_DICT:
+        if tuple(self.section) not in self.METH_DICT:
             raise IOError("Can't parse line {} in section '{}' because the "
                           "section is unknown".format(lineno, self.section))
         try:
-            method, kwargs = self.METH_DICT[self.section]
+            method, kwargs = self.METH_DICT[tuple(self.section)]
             return method(self, line, lineno, **kwargs)
         except Exception as error:
             raise IOError("Problems parsing line {}. I think it should be a "
@@ -162,39 +229,35 @@ class SectionLineParser(LineParser, metaclass=SectionParser):
 
     def parse_header(self, line, lineno=0):
         """
-        Parses a section header. Sets :attr:`section` and :attr:`map_type` when
-        applicable. Does not check whether `line` is a valid section header.
+        Parses a section header with line number `lineno`. Sets :attr:`section`
+        when applicable. Does not check whether `line` is a valid section
+        header.
 
         Parameters
         ----------
         line: str
+        lineno: str
 
         Returns
         -------
         object
             The result of calling :meth:`finalize_section`, which is called
-            if the header is specified in :attr:`MAP_TYPES`
+            if a section ends.
 
         Raises
         ------
         KeyError
             If the section header is unknown.
         """
-        # TODO: This method needs to be purged of references to self.MAP_TYPES
-        #       and self.map_type
         prev_section = self.section
 
-        section = (line.strip('[ ]').casefold(), )
-        self.section = section
-        if section not in self.METH_DICT and section not in self.MAP_TYPES:
-            raise IOError("Section '{}' on line {} is unknown. The following "
-                          "sections are known: {}."
-                          "".format(section, lineno,
-                                    list(self.METH_DICT.keys()) + self.MAP_TYPES))
+        section = self.section + [line.strip('[ ]').casefold()]
 
-        section_end = self.section in self.MAP_TYPES
-        if section_end:
-            self.map_type = self.section
+        while tuple(section) not in self.METH_DICT and len(section) > 1:
+            section.pop(-2)  # [a, b, c, d] -> [a, b, d]
+
+        self.section = section
+        if prev_section:
             result = self.finalize_section(prev_section)
             return result
 
@@ -227,10 +290,23 @@ class SectionLineParser(LineParser, metaclass=SectionParser):
 
 
 def split_comments(line, comment_char=';'):
+    """
+    Splits `line` at the first occurence of `comment_char`.
+
+    Parameters
+    ----------
+    line: str
+    comment_char: str
+
+    Returns
+    -------
+    tuple[str, str]
+        `line` before and after `comment_char`, respectively. If `line` does
+        not contain `comment_char`, the second element will be an empty string.
+    """
     split = line.split(comment_char, 1)
     data = split[0].strip()
     if len(split) == 1:
-        comment = ''
+        return data, ''
     else:
-        comment = split[1].strip()
-    return data, comment
+        return data, split[1].strip()
