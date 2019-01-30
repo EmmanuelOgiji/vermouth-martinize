@@ -483,6 +483,7 @@ class MappingDirector(SectionLineParser):
     RESIDUE_ATOM_SEP = ':'
     COMMENT_CHAR = ';'
     NO_FETCH_BLOCK = '!'
+    SECTION_ENDS = ['block', 'modification']
 
     def __init__(self, builder=None):
         if builder is None:
@@ -501,31 +502,27 @@ class MappingDirector(SectionLineParser):
         self.identifiers = {}
         self.builder.reset()
 
-    def finalize_section(self, previous_section):
+    def finalize_section(self, previous_section, closed_sections):
         """
         Wraps up parsing of a single mapping.
 
         Parameters
         ----------
-        section_name: tuple[str]
-            The type of the just finished mapping.
+        previous_section: collections.abc.Sequence[str]
+            The previously parsed section.
+        closed_sections: collections.abc.Iterable[str]
+            The just finished sections.
 
         Returns
         -------
         Mapping
             The accumulated mapping.
         """
-
-        # len(self.section) == 1  # base section switched  -> run
-        # len(self.section) == 0  # EOF  -> run
-        # previous_section == ['macros']  # -> don't run
-
-        if len(self.section) > 1 or len(previous_section) == 1:
-            return
-        map_type = previous_section[0]
-        mapping = self.builder.get_mapping(map_type)
-        self._reset_mapping()
-        return mapping
+        if any(closed_section in self.SECTION_ENDS for closed_section in closed_sections):
+            map_type = previous_section[0]
+            mapping = self.builder.get_mapping(map_type)
+            self._reset_mapping()
+            return mapping
 
     def _parse_blocks(self, line):
         """

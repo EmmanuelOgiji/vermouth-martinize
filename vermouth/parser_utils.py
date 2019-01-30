@@ -186,17 +186,29 @@ class SectionLineParser(LineParser, metaclass=SectionParser):
         """
         Called after the last line has been parsed to wrap up. Resets
         the instance and calls :meth:`finalize_section`.
+
+        Arguments
+        ---------
+        lineno: int
+            The line number.
         """
         prev_section = self.section
         self.section = []
-        result = self.finalize_section(prev_section)
+        result = self.finalize_section(prev_section, prev_section)
         self.macros = {}
         self.section = None
         return result
 
-    def finalize_section(self, previous_section):
+    def finalize_section(self, previous_section, ended_section):
         """
         Called once a section is finished. Currently does nothing.
+        
+        Arguments
+        ---------
+        previous_section: list[str]
+            The last parsed section.
+        ended_section: list[str]
+            The sections that have been ended.
         """
         return
 
@@ -253,12 +265,13 @@ class SectionLineParser(LineParser, metaclass=SectionParser):
 
         section = self.section + [line.strip('[ ]').casefold()]
 
+        ended = []
         while tuple(section) not in self.METH_DICT and len(section) > 1:
-            section.pop(-2)  # [a, b, c, d] -> [a, b, d]
+            ended.append(section.pop(-2))  # [a, b, c, d] -> [a, b, d]
 
         self.section = section
         if prev_section:
-            result = self.finalize_section(prev_section)
+            result = self.finalize_section(prev_section, ended)
             return result
 
     @staticmethod
