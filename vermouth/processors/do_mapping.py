@@ -51,7 +51,9 @@ def edge_matcher(graph1, graph2, node11, node12, node21, node22):
 
 
 def node_matcher(node1, node2):
-    return attributes_match(node1, node2, ignore_keys=('atype', 'charge', 'charge_group', 'resid', 'replace', '_old_atomname'))
+    return attributes_match(node1, node2,
+                            ignore_keys=('atype', 'charge', 'charge_group',
+                                         'resid', 'replace', '_old_atomname'))
 
 
 def _old_atomname_match(node1, node2):
@@ -123,7 +125,12 @@ def map_modifications(molecule, graph_out, mol_to_out, out_to_mol):
     needed_mod_mappings = set()
     known_mod_mappings = get_mod_mappings(molecule.force_field)
     for group in found_ptm_groups:
-        # FIXME
+        # known_mod_mappings is a dict[tuple[str], Mapping]. We want to know
+        # the minimal combination of those needed to cover all the PTMs found
+        # in group. The cheapest solution is covering the names of the PTMs in
+        # group with keys from known_mod_mappings. An improvement would be to
+        # do the graph covering again.
+        # TODO?
         covered_by = cover([ptm.name for ptm in group],
                            sorted(known_mod_mappings, key=len, reverse=True))
         needed_mod_mappings.update(covered_by)
@@ -133,6 +140,8 @@ def map_modifications(molecule, graph_out, mol_to_out, out_to_mol):
     to_remove = set()
     touched_atoms = defaultdict(list)
     all_matches = []
+    # Sort on the tuple[str] type names of the mappings so that mappings that
+    # define most modifications at the same time get processed first
     for mod_name in sorted(needed_mod_mappings, key=len, reverse=True):
         mod_mapping = known_mod_mappings[mod_name]
         # TODO: include modifications in matching criterion (just add it to the
@@ -258,7 +267,7 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
         A new molecule, created by transforming `molecule` to `to_ff` according
         to `mappings`.
     """
-    # Transfering the meta meybe should be a copy, or a deep copy...
+    # Transfering the meta maybe should be a copy, or a deep copy...
     # If it breaks we look at this line.
     graph_out = Molecule(force_field=to_ff, meta=molecule.meta)
     # We want to keep the 'chain' property from the original molecule.
@@ -373,14 +382,13 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
         edges = molecule.edges_between(match1.keys(), match2.keys())
         # TODO: Backmapping needs love here
         for mol_idx, mol_jdx in edges:
-            # Substract none_to_one_mappings, since those should be made to
+            # Substract none_to_one_mappings, since those should not be made to
             # connect to things automatically.
             out_idxs = mol_to_out[mol_idx].keys() - none_to_one_mappings
             out_jdxs = mol_to_out[mol_jdx].keys() - none_to_one_mappings
             for out_idx, out_jdx in product(out_idxs, out_jdxs):
                 if out_idx != out_jdx:
                     graph_out.add_edge(out_idx, out_jdx)
-
 
     # Sanity check the results
     # "Many to one" mapping - overlapping blocks means dubious node properties
