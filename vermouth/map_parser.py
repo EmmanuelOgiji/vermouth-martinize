@@ -87,8 +87,8 @@ class Mapping:
     def __init__(self, block_from, block_to, mapping, references,
                  ff_from=None, ff_to=None, extra=(), normalize_weights=False,
                  type='block', names=tuple()):
-        self.block_from = block_from
-        self.block_to = block_to
+        self.block_from = block_from.copy()
+        self.block_to = block_to.copy()
         self.block_to.extra = extra
         self.references = references
         self.ff_from = ff_from
@@ -450,6 +450,12 @@ class MappingDirector(SectionLineParser):
     :class:`Mapping` object by calling methods of it's builder (default
     :class:`MappingBuilder`) with the correct arguments.
 
+    Parameters
+    ----------
+    force_fields: dict[str, ForceField]
+        Dict of known force fields.
+    builder: MappingBuilder
+
     Attributes
     ----------
     RESNAME_NUM_SEP: str
@@ -485,11 +491,12 @@ class MappingDirector(SectionLineParser):
     NO_FETCH_BLOCK = '!'
     SECTION_ENDS = ['block', 'modification']
 
-    def __init__(self, builder=None):
+    def __init__(self, force_fields, builder=None):
         if builder is None:
             self.builder = MappingBuilder()
         else:
             self.builder = builder
+        self.force_fields = force_fields
         super().__init__()
         self._reset_mapping()
 
@@ -694,7 +701,7 @@ class MappingDirector(SectionLineParser):
                 identifier = identifier[len(self.NO_FETCH_BLOCK):]
                 fetch = False
             if fetch and attrs.get('resname') is not None:
-                block = get_block(self.ff[direction], map_type, attrs['resname'])
+                block = getattr(self.force_fields[self.ff[direction]], map_type+'s')[attrs['resname']]
                 builder_methods[direction](block)
             if map_type == 'modification' and 'resname' in attrs:
                 del attrs['resname']
@@ -835,7 +842,7 @@ class MappingDirector(SectionLineParser):
         self.builder.add_reference(attrs_to, attrs_from)
 
 
-def parse_mapping_file(filepath):
+def parse_mapping_file(filepath, force_fields):
     """
     Parses a mapping file.
 
@@ -843,6 +850,8 @@ def parse_mapping_file(filepath):
     ----------
     filepath: str
         The path of the file to parse.
+    force_fields: dict[str, ForceField]
+        Dict of known forcefields
 
     Returns
     -------
@@ -850,28 +859,6 @@ def parse_mapping_file(filepath):
         A list of all mappings described in the file.
     """
     with open(filepath) as map_in:
-        director = MappingDirector()
+        director = MappingDirector(force_fields)
         mappings = list(director.parse(map_in))
     return mappings
-
-
-def get_block(ff_name, type, blockname):
-    """
-    Helper method that gets a a block associated with a name and a type from
-    a specific :class:`vermouth.forcefield.ForceField`.
-
-    Parameters
-    ----------
-    ff_name: str
-        The name of the force field.
-    type: str
-        The type of block to get, e.g. "block" or "modification".
-    blockname: str
-        The name of the block to get.
-
-    Returns
-    -------
-    vermouth.molecule.Block or vermouth.molecule.Link
-        The found block.
-    """
-    return getattr(FORCE_FIELDS[ff_name], type+'s')[blockname]

@@ -33,8 +33,7 @@ LOGGER = StyleAdapter(get_logger(__name__))
 
 
 def build_graph_mapping_collection(from_ff, to_ff, mappings):
-    # FIXME!
-    return parse_mapping_file('jon.map')
+    return mappings[from_ff.name][to_ff.name].values()
 
 
 def edge_matcher(graph1, graph2, node11, node12, node21, node22):
@@ -94,12 +93,10 @@ def cover(to_cover, options):
     return None
 
 
-def get_mod_mappings(from_ff):
+def get_mod_mappings(mappings):
     """
     Returns a dict of all known modification mappings.
     """
-    # FIXME!
-    mappings = parse_mapping_file('modifications.map')
     out = {}
     for mapping in mappings:
         if mapping.type == 'modification':
@@ -107,7 +104,7 @@ def get_mod_mappings(from_ff):
     return out
 
 
-def map_modifications(molecule, graph_out, mol_to_out, out_to_mol):
+def map_modifications(molecule, graph_out, mol_to_out, out_to_mol, mappings):
     modified_nodes = set()  # This will contain whole residues.
     for idx, node in molecule.nodes.items():
         if node.get('modifications', []):
@@ -123,7 +120,7 @@ def map_modifications(molecule, graph_out, mol_to_out, out_to_mol):
         found_ptm_groups.update(modifications)
 
     needed_mod_mappings = set()
-    known_mod_mappings = get_mod_mappings(molecule.force_field)
+    known_mod_mappings = get_mod_mappings(mappings)
     for group in found_ptm_groups:
         # known_mod_mappings is a dict[tuple[str], Mapping]. We want to know
         # the minimal combination of those needed to cover all the PTMs found
@@ -133,6 +130,12 @@ def map_modifications(molecule, graph_out, mol_to_out, out_to_mol):
         # TODO?
         covered_by = cover([ptm.name for ptm in group],
                            sorted(known_mod_mappings, key=len, reverse=True))
+        if covered_by is None:
+            LOGGER.warning("Can't find modification mappings for the "
+                           "modifications {}. The following modification "
+                           "mappings are known: {}",
+                           [ptm.name for ptm in group], known_mod_mappings)
+            return []
         needed_mod_mappings.update(covered_by)
 
     # type: atoms: modifications
@@ -371,7 +374,7 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
                     # nx.get_node_attributes doesn't take a default.
                     graph_out.nodes[out_idx][attr] = None
 
-    mod_matches = map_modifications(molecule, graph_out, mol_to_out, out_to_mol)
+    mod_matches = map_modifications(molecule, graph_out, mol_to_out, out_to_mol, mappings)
     all_matches.extend(mod_matches)
 
     # We need to add edges between residues. Within residues comes from the
