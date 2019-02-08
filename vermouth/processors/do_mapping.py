@@ -200,7 +200,9 @@ def apply_block_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
         for mol_idx in mol_to_block:
             mol_to_out[mol_idx][spawned] = 0
             out_to_mol[spawned][mol_idx] = 0
-    return overlap, none_to_one_mappings
+    
+    new_references = {block_to_out[mod_idx]: mol_idx for mod_idx, mol_idx in references.items()}
+    return overlap, none_to_one_mappings, new_references
 
 
 def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
@@ -259,6 +261,8 @@ def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
                 out_to_mol[out_idx] = {}
             out_to_mol[out_idx][mol_idx] = weight
 
+    new_references = {mod_to_out[mod_idx]: mol_idx for mod_idx, mol_idx in references.items()}
+
     # Apply interactions
     applied_interactions = {}
     for interaction_type, interactions in modification.interactions.items():
@@ -267,16 +271,16 @@ def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
             interaction = interaction._replace(atoms=atoms)
             applied_interactions[interaction_type][tuple(atoms)].append(modification)
             graph_out.add_interaction(interaction_type, **interaction._asdict())
-    return applied_interactions
+    return applied_interactions, new_references
 
 
-def attrs_from_node(node, attrs_keep):
+def attrs_from_node(node, attrs):
     if 'replace' in node:
         node = node.copy().update(node['replace'])
-    return {attr: val for attr, val in node.items() if attr in attrs_keep}
+    return {attr: val for attr, val in node.items() if attr in attrs}
 
 
-def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
+def do_mapping(molecule, mappings, to_ff, attribute_keep=(), attribute_must=()):
     """
     Creates a new :class:`~vermouth.molecule.Molecule` in force field `to_ff`
     from `molecule`, based on `mappings`. It does this by doing a subgraph
@@ -298,7 +302,12 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
     to_ff: :class:`~vermouth.forcefield.ForceField`
         The force field to transform to.
     attribute_keep: :class:`~collections.abc.Iterable`
-        The attributes to keep from `molecule`
+        The attributes that will always be transferred from `molecule` to the
+        produced graph.
+    attribute_must: :class:`~collections.abc.Iterable`
+        The attributes that the nodes in the output graph *must* have. If
+        they're not provided by the mappings/blocks they're taken from
+        `molecule`.
 
     Returns
     -------
@@ -309,8 +318,6 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
     # Transfering the meta maybe should be a copy, or a deep copy...
     # If it breaks we look at this line.
     graph_out = Molecule(force_field=to_ff, meta=molecule.meta)
-    # We want to keep the 'chain' property from the original molecule.
-    attribute_keep = ['chain'] + list(attribute_keep)
     mappings = build_graph_mapping_collection(molecule.force_field, to_ff, mappings)
     block_matches = []
     for mapping in mappings:
@@ -349,19 +356,19 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
             (mod_matches and
              min(mod_matches[-1][0].keys()) < min(block_matches[-1][0].keys()))):
             match = mod_matches.pop(-1)
-            applied_interactions = apply_mod_mapping(match,
-                                                     molecule, graph_out,
-                                                     mol_to_out, out_to_mol)
+            applied_interactions, refs = apply_mod_mapping(match,
+                                                           molecule, graph_out,
+                                                           mol_to_out, out_to_mol)
             modified_interactions.update(applied_interactions)
         else:
             match = block_matches.pop(-1)
-            overlap, none_to_one = apply_block_mapping(match,
-                                                       molecule, graph_out,
-                                                       mol_to_out, out_to_mol)
+            overlap, none_to_one, refs = apply_block_mapping(match,
+                                                             molecule, graph_out,
+                                                             mol_to_out, out_to_mol)
             overlapping_mappings.update(overlap)
             none_to_one_mappings.update(none_to_one)
         all_matches.append(match)
-        all_references.update(match[-1])
+        all_references.update(refs)
 
     # At this point, we should have created graph_out at the desired
     # resolution, *and* have the associated correspondence in mol_to_out and
@@ -376,30 +383,39 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
         graph_out.nodes[out_idx]['graph'] = subgraph
         weights = out_to_mol[out_idx]
         graph_out.nodes[out_idx]['mapping_weights'] = weights
-        # FIXME: attribute_keep is different for blocks and modifications...
-        #        This now results in modification nodes not getting e.g. a
-        #        resname and a non-sensical resid
+
         if out_idx in all_references:
             ref_idx = all_references[out_idx]
-            new_attrs = attrs_from_node(molecule.nodes[ref_idx], attribute_keep)
-            graph_out.nodes[out_idx].update(new_attrs)
+            new_attrs = attrs_from_node(molecule.nodes[ref_idx],
+                                        attribute_keep+attribute_must)
+            for attr, val in new_attrs.items():
+                # Attrs in attribute_keep we always transfer, those in
+                # attribute_must we transfer only if they're not already in the
+                # created node
+                if attr in attribute_keep or attr not in graph_out.nodes[out_idx]:
+                    graph_out.nodes[out_idx].update(new_attrs)
         else:
             attrs = defaultdict(list)
             for mol_idx in mol_idxs:
-                new_attrs = attrs_from_node(molecule.nodes[mol_idx], attribute_keep)
+                new_attrs = attrs_from_node(molecule.nodes[mol_idx],
+                                            attribute_keep+attribute_must)
                 for attr, val in new_attrs.items():
                     attrs[attr].append(val)
+            attrs_not_sane = []
             for attr, vals in attrs.items():
+                if attr in attribute_keep or attr not in graph_out.nodes[out_idx]:
+                    if vals:
+                        graph_out.nodes[out_idx][attr] = vals[0]
+                    else:
+                        # No nodes hat the attribute.
+                        graph_out.nodes[out_idx][attr] = None
                 if not are_all_equal(vals):
-                    LOGGER.warning('The attribute {} for atom {} is going to'
-                                   ' be garbage.', attr, format_atom_string(graph_out.nodes[out_idx]),
-                                   type='inconsistent-data')
-                if vals:
-                    graph_out.nodes[out_idx][attr] = vals[0]
-                else:
-                    # No nodes hat the attribute `name`. And
-                    # nx.get_node_attributes doesn't take a default.
-                    graph_out.nodes[out_idx][attr] = None
+                    attrs_not_sane.append(attr)
+            if attrs_not_sane:
+                LOGGER.warning('The attributes {} for atom {} are going to'
+                               ' be garbage.', attrs_not_sane, format_atom_string(graph_out.nodes[out_idx]),
+                               type='inconsistent-data')
+
         if graph_out[out_idx].get('atomname', '') is None:
             to_remove.add(out_idx)
                 
@@ -420,7 +436,10 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
                 if out_idx != out_jdx:
                     graph_out.add_edge(out_idx, out_jdx)
 
-    # Sanity check the results
+    ############################
+    # Sanity check the results #
+    ############################
+
     # "Many to one" mapping - overlapping blocks means dubious node properties
     if overlapping_mappings:
         LOGGER.warning('These atoms are covered by multiple blocks. This is a '
@@ -485,11 +504,13 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=()):
 
 
 class DoMapping(Processor):
-    def __init__(self, mappings, to_ff, delete_unknown=False, attribute_keep=()):
+    def __init__(self, mappings, to_ff, delete_unknown=False, attribute_keep=(),
+                 attribute_must=()):
         self.mappings = mappings
         self.to_ff = to_ff
         self.delete_unknown = delete_unknown
-        self.attribute_keep = attribute_keep
+        self.attribute_keep = tuple(attribute_keep)
+        self.attribute_must = tuple(attribute_must)
         super().__init__()
 
     def run_molecule(self, molecule):
@@ -497,7 +518,8 @@ class DoMapping(Processor):
             molecule,
             mappings=self.mappings,
             to_ff=self.to_ff,
-            attribute_keep=self.attribute_keep
+            attribute_keep=self.attribute_keep,
+            attribute_must=self.attribute_must
         )
 
     def run_system(self, system):
