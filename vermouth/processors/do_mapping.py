@@ -33,6 +33,24 @@ LOGGER = StyleAdapter(get_logger(__name__))
 
 
 def build_graph_mapping_collection(from_ff, to_ff, mappings):
+    """
+    Function that produces a collection of :class:`vermouth.Mapping` objects.
+    Hereby deprecated.
+
+    Parameters
+    ----------
+    from_ff: vermouth.ForceField
+        Origin force field.
+    to_ff: vermouth.ForceField
+        Destination force field.
+    mappings: dict[str, dict[str, vermouth.Mapping]]
+        All known mappings
+
+    Returns
+    -------
+    collections.abc.Iterable
+        A collection of mappings that map from `from_ff` to `to_ff`.
+    """
     return mappings[from_ff.name][to_ff.name].values()
 
 
@@ -40,6 +58,23 @@ def edge_matcher(graph1, graph2, node11, node12, node21, node22):
     """
     Checks whether the resids for node11 and node12 in graph1 are the same, and
     whether that's also true for node21 and node22 in graph2.
+
+    Parameters
+    ----------
+    graph1: networkx.Graph
+    graph2: networkx.Graph
+    node11: collections.abc.Hashable
+        A node key in `graph1`.
+    node12: collections.abc.Hashable
+        A node key in `graph1`.
+    node21: collections.abc.Hashable
+        A node key in `graph2`.
+    node22: collections.abc.Hashable
+        A node key in `graph2`.
+
+    Returns
+    -------
+    bool
     """
     node11 = graph1.nodes[node11]
     node12 = graph1.nodes[node12]
@@ -50,12 +85,30 @@ def edge_matcher(graph1, graph2, node11, node12, node21, node22):
 
 
 def node_matcher(node1, node2):
+    """
+    Checks whether nodes should be considered equal for isomorphism. Takes all
+    attributes in `node2` into account, except for the attributes "atype",
+    "charge", "charge_group", "resid", "replace", and "_old_atomname".
+
+    Parameters
+    ----------
+    node1: dict
+    node2: dict
+
+    Returns
+    -------
+    bool
+    """
     return attributes_match(node1, node2,
                             ignore_keys=('atype', 'charge', 'charge_group',
                                          'resid', 'replace', '_old_atomname'))
 
 
 def _old_atomname_match(node1, node2):
+    """
+    Adds a _name attribute to copies of the nodes, and feeds it all to
+    :func:`node_matcher`
+    """
     name1 = node1.get('_old_atomname', node1['atomname'])
     name2 = node2.get('_old_atomname', node2['atomname'])
     node1 = node1.copy()
@@ -68,6 +121,10 @@ def _old_atomname_match(node1, node2):
 
 
 def ptm_resname_match(node1, node2):
+    """
+    As :func:`node_matcher`, except that empty resname and false PTM_atom
+    attributes from `node2` are removed.
+    """
     if 'resname' in node2 and not node2['resname']:
         node2 = node2.copy()
         del node2['resname']
@@ -78,6 +135,26 @@ def ptm_resname_match(node1, node2):
 
 
 def cover(to_cover, options):
+    """
+    Implements a recursive backtracking algorithm to cover all elements of
+    `to_cover` with the elements from `options` that have the lowest index.
+    In this context "to cover" means that all items in an element of `options`
+    must be in `to_cover`. Elements in `to_cover` can only be covered *once*.
+
+    Parameters
+    ----------
+    to_cover: collections.abc.MutableSet
+        The items that should be covered.
+    options: collections.abc.Sequence[collections.abc.MutableSet]
+        The elements that can be used to cover `to_cover`. All items in an
+        element of `options` must be present in `to_cover` to qualify.
+
+    Returns
+    -------
+    None or list
+        None if no covering can be found, or the list of items from `options`
+        with the lowest indices that exactly covers `to_cover`.
+    """
     if not to_cover:
         return []
     for idx, option in enumerate(options):
@@ -96,6 +173,16 @@ def cover(to_cover, options):
 def get_mod_mappings(mappings):
     """
     Returns a dict of all known modification mappings.
+
+    Parameters
+    ----------
+    mappings: collections.abc.Iterable[vermouth.Mapping]
+        All known mappings.
+
+    Returns
+    -------
+    dict[tuple[str, ...], vermouth.Mapping]
+        All mappings that describe a modification mapping.
     """
     out = {}
     for mapping in mappings:
@@ -105,6 +192,28 @@ def get_mod_mappings(mappings):
 
 
 def modification_matches(molecule, mappings):
+    """
+    Returns a minimal combination of modification mappings and where they
+    should be applied that describes all modifications in `molecule`.
+
+    Parameters
+    ----------
+    molecule: nx.Graph
+        The molecule whose modifications should be treated. Modifications are
+        described by the 'modifications' node attribute.
+    mappings: collections.abc.Iterable[vermouth.Mapping]
+        All known mappings.
+
+    Returns
+    -------
+    list[tuple[dict, vermouth.Link, dict]]
+    A list with the following items:
+        Dict describing the correspondence of node keys in `molecule` to node
+            keys in the modification.
+        The modification.
+        Dict with all reference atoms, mapping modification nodes to nodes in
+            `molecule`.
+    """
     modified_nodes = set()  # This will contain whole residues.
     for idx, node in molecule.nodes.items():
         if node.get('modifications', []):
@@ -159,6 +268,40 @@ def modification_matches(molecule, mappings):
 
 
 def apply_block_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
+    """
+    Performs a mapping operation for a "block". `match` is a tuple of 3
+    elements that describes what nodes in `molecule` should correspond to
+    a :class:`vermouth.Block` that should be added to `graph_out`, and any
+    atoms that should be used a references.
+    Add the required :class:`vermouth.Block` to `graph_out`, and updates
+    `mol_to_out` and `out_to_mol` *in-place*.
+
+    Parameters
+    ----------
+    match
+    molecule: nx.Graph
+        The original molecule
+    graph_out: vermouth.Molecule
+        The newly created graph that describes `molecule` at a different
+        resolution.
+    mol_to_out: dict[collections.abc.Hashable, dict[collections.abc.Hashable, float]]
+        A dict mapping nodes in `molecule` to nodes in `graph_out` with the
+        associated weights.
+    out_to_mol: dict[collections.abc.Hashable, dict[collections.abc.Hashable, float]]
+        A dict mapping nodes in `graph_out` to nodes in `molecule` with the
+        associated weights.
+
+    Returns
+    -------
+    set
+        A set of all overlapping nodes that were already mapped before.
+    set
+        A set of none-to-one mappings. I.e. nodes that were created without
+        nodes mapping to them.
+    dict
+        A dict of reference atoms, mapping `graph_out` nodes to nodes in
+        `molecule`.
+    """
     mol_to_block, blocks_to, references = match
     if graph_out.nrexcl is None:
         graph_out.nrexcl = blocks_to.nrexcl
@@ -200,12 +343,40 @@ def apply_block_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
         for mol_idx in mol_to_block:
             mol_to_out[mol_idx][spawned] = 0
             out_to_mol[spawned][mol_idx] = 0
-    
+
     new_references = {block_to_out[mod_idx]: mol_idx for mod_idx, mol_idx in references.items()}
     return overlap, none_to_one_mappings, new_references
 
 
 def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
+    """
+    Performs the mapping operation for a modification.
+    
+    Parameters
+    ----------
+    match
+    molecule: nx.Graph
+        The original molecule
+    graph_out: vermouth.Molecule
+        The newly created graph that describes `molecule` at a different
+        resolution.
+    mol_to_out: dict[collections.abc.Hashable, dict[collections.abc.Hashable, float]]
+        A dict mapping nodes in `molecule` to nodes in `graph_out` with the
+        associated weights.
+    out_to_mol: dict[collections.abc.Hashable, dict[collections.abc.Hashable, float]]
+        A dict mapping nodes in `graph_out` to nodes in `molecule` with the
+        associated weights.
+
+    Returns
+    -------
+    dict[str, dict[tuple, vermouth.Link]]
+        A dict of all modifications that have been applied by this modification
+        mapping operations. Maps interaction type to involved atoms to the
+        modification responsible.        
+    dict
+        A dict of reference atoms, mapping `graph_out` nodes to nodes in
+        `molecule`.
+    """
     mol_to_mod, modification, references = match
     LOGGER.info('Applying modification mapping {}', modification.name, type='general')
     mod_to_mol = defaultdict(dict)
@@ -250,7 +421,7 @@ def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
                                  "atomname {}".format(modification.nodes[mod_idx]['atomname']))
             mod_to_out[mod_idx] = out_idx
             # FIXME: modify out_node as required. We will lose access to
-            # "modification" after this.
+            #        "modification" after this.
     for mol_idx in mol_to_mod:
         for mod_idx, weight in mol_to_mod[mol_idx].items():
             out_idx = mod_to_out[mod_idx]
@@ -264,17 +435,31 @@ def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
     new_references = {mod_to_out[mod_idx]: mol_idx for mod_idx, mol_idx in references.items()}
 
     # Apply interactions
-    applied_interactions = {}
+    applied_interactions = defaultdict(dict)
     for interaction_type, interactions in modification.interactions.items():
         for interaction in interactions:
             atoms = [mod_to_mol[mod_idx] for mod_idx in interaction.atoms]
             interaction = interaction._replace(atoms=atoms)
             applied_interactions[interaction_type][tuple(atoms)].append(modification)
             graph_out.add_interaction(interaction_type, **interaction._asdict())
-    return applied_interactions, new_references
+    return dict(applied_interactions), new_references
 
 
 def attrs_from_node(node, attrs):
+    """
+    Helper function that applies a "replace" operations on the node if
+    required, and then returns a dict of the attributes listed in `attrs`.
+
+    Parameters
+    ----------
+    node: dict
+    attrs: collections.abc.Container
+        Attributes that should be in the output.
+    
+    Returns
+    -------
+    dict
+    """
     if 'replace' in node:
         node = node.copy().update(node['replace'])
     return {attr: val for attr, val in node.items() if attr in attrs}
@@ -418,7 +603,7 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=(), attribute_must=()):
 
         if graph_out[out_idx].get('atomname', '') is None:
             to_remove.add(out_idx)
-                
+
 
     # We need to add edges between residues. Within residues comes from the
     # blocks.
@@ -498,7 +683,7 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=(), attribute_must=()):
                 # TODO: better message
                 LOGGER.warning('Interaction set by multiple modification '
                                'mappings', type='inconsistent-data')
-    
+
     graph_out.remove_nodes_from(to_remove)
     return graph_out
 
