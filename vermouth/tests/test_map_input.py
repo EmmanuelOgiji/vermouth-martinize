@@ -282,7 +282,7 @@ def test_read_mapping_file(case):
         )
     reference = vermouth.map_input._default_to_dict(reference)
 
-    mappings = vermouth.map_input.read_mapping_file(
+    mappings = vermouth.map_input.read_backmapping_file(
         ['[ molecule ]'] + case.string.split('\n')
     )
 
@@ -406,7 +406,7 @@ def test_read_mapping_directory_not_dir():
     the input is not a directory.
     """
     with pytest.raises(NotADirectoryError):
-        vermouth.map_input.read_mapping_directory('not a directory')
+        vermouth.map_input.read_mapping_directory('not a directory', {})
 
 
 def test_read_mapping_directory_error(tmpdir):
@@ -425,7 +425,7 @@ def test_read_mapping_directory_error(tmpdir):
     with open(str(mapdir / 'not_valid.map'), 'w') as outfile:
         outfile.write('invalid content')
     with pytest.raises(IOError):
-        vermouth.map_input.read_mapping_directory(mapdir)
+        vermouth.map_input.read_mapping_directory(mapdir, {})
 
 
 def test_generate_self_mapping():
@@ -446,17 +446,13 @@ def test_generate_self_mapping():
     ref_mappings = {
         'A0': (
             # mapping
-            {(0, 'AA'): [(0, 'AA')], (0, 'BBB'): [(0, 'BBB')], (0, 'CCCC'): [(0, 'CCCC')]},
-            # weights
-            {(0, 'AA'): {(0, 'AA'): 1}, (0, 'BBB'): {(0, 'BBB'): 1}, (0, 'CCCC'): {(0, 'CCCC'): 1}},
+            {"AA": {"AA": 1}, "BBB": {"BBB": 1}, "CCCC": {"CCCC": 1}},
             # extra
             [],
         ),
         'B1': (
             # mapping
-            {(0, 'BBB'): [(0, 'BBB')], (0, 'CCCC'): [(0, 'CCCC')], (0, 'E'): [(0, 'E')]},
-            # weights
-            {(0, 'BBB'): {(0, 'BBB'): 1}, (0, 'CCCC'): {(0, 'CCCC'): 1}, (0, 'E'): {(0, 'E'): 1}},
+            {"BBB": {"BBB": 1}, "CCCC": {"CCCC": 1}, "E": {"E": 1}},
             # extra
             [],
         ),
@@ -464,7 +460,8 @@ def test_generate_self_mapping():
     # Actually test
     mappings = vermouth.map_input.generate_self_mappings(blocks)
     assert mappings.keys() == ref_mappings.keys()
-    assert mappings == ref_mappings
+    for blockname in mappings:
+        assert mappings[blockname].mapping, mappings[blockname].extras == ref_mappings[blockname]
 
 
 def test_generate_all_self_mappings():
