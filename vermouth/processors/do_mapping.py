@@ -351,7 +351,7 @@ def apply_block_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
 def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
     """
     Performs the mapping operation for a modification.
-    
+
     Parameters
     ----------
     match
@@ -372,7 +372,7 @@ def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
     dict[str, dict[tuple, vermouth.Link]]
         A dict of all modifications that have been applied by this modification
         mapping operations. Maps interaction type to involved atoms to the
-        modification responsible.        
+        modification responsible.
     dict
         A dict of reference atoms, mapping `graph_out` nodes to nodes in
         `molecule`.
@@ -455,7 +455,7 @@ def attrs_from_node(node, attrs):
     node: dict
     attrs: collections.abc.Container
         Attributes that should be in the output.
-    
+
     Returns
     -------
     dict
@@ -537,6 +537,10 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=(), attribute_must=()):
     while block_matches or mod_matches:
         # Take the match with the lowest atom id, and prefer blocks over
         # modifications
+        # This will break badly if there is a modification associated with an
+        # atom with a low ID, but it crosses residues and expects to find an
+        # existing atom that belongs to a block that is not mapped yet.
+        # FIXME
         if (not block_matches or
             (mod_matches and
              min(mod_matches[-1][0].keys()) < min(block_matches[-1][0].keys()))):
