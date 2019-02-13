@@ -34,16 +34,17 @@ LOGGER = StyleAdapter(get_logger(__name__))
 
 def build_graph_mapping_collection(from_ff, to_ff, mappings):
     """
-    Function that produces a collection of :class:`vermouth.Mapping` objects.
+    Function that produces a collection of :class:`vermouth.map_parser.Mapping`
+    objects.
     Hereby deprecated.
 
     Parameters
     ----------
-    from_ff: vermouth.ForceField
+    from_ff: vermouth.forcefield.ForceField
         Origin force field.
-    to_ff: vermouth.ForceField
+    to_ff: vermouth.forcefield.ForceField
         Destination force field.
-    mappings: dict[str, dict[str, vermouth.Mapping]]
+    mappings: dict[str, dict[str, vermouth.map_parser.Mapping]]
         All known mappings
 
     Returns
@@ -176,12 +177,12 @@ def get_mod_mappings(mappings):
 
     Parameters
     ----------
-    mappings: collections.abc.Iterable[vermouth.Mapping]
+    mappings: collections.abc.Iterable[vermouth.map_parser.Mapping]
         All known mappings.
 
     Returns
     -------
-    dict[tuple[str, ...], vermouth.Mapping]
+    dict[tuple[str], vermouth.map_parser.Mapping]
         All mappings that describe a modification mapping.
     """
     out = {}
@@ -198,21 +199,22 @@ def modification_matches(molecule, mappings):
 
     Parameters
     ----------
-    molecule: nx.Graph
+    molecule: networkx.Graph
         The molecule whose modifications should be treated. Modifications are
         described by the 'modifications' node attribute.
-    mappings: collections.abc.Iterable[vermouth.Mapping]
+    mappings: collections.abc.Iterable[vermouth.map_parser.Mapping]
         All known mappings.
 
     Returns
     -------
-    list[tuple[dict, vermouth.Link, dict]]
-    A list with the following items:
-        Dict describing the correspondence of node keys in `molecule` to node
-            keys in the modification.
-        The modification.
-        Dict with all reference atoms, mapping modification nodes to nodes in
-            `molecule`.
+    list[tuple[dict, vermouth.molecule.Link, dict]]
+        A list with the following items:
+            Dict describing the correspondence of node keys in `molecule` to
+                node keys in the modification.
+            The modification.
+                Dict with all reference atoms, mapping modification nodes to
+                    nodes in `molecule`.
+            
     """
     modified_nodes = set()  # This will contain whole residues.
     for idx, node in molecule.nodes.items():
@@ -271,17 +273,17 @@ def apply_block_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
     """
     Performs a mapping operation for a "block". `match` is a tuple of 3
     elements that describes what nodes in `molecule` should correspond to
-    a :class:`vermouth.Block` that should be added to `graph_out`, and any
-    atoms that should be used a references.
-    Add the required :class:`vermouth.Block` to `graph_out`, and updates
-    `mol_to_out` and `out_to_mol` *in-place*.
+    a :class:`vermouth.molecule.Block` that should be added to `graph_out`, and
+    any atoms that should be used a references.
+    Add the required :class:`vermouth.molecule.Block` to `graph_out`, and
+    updates `mol_to_out` and `out_to_mol` *in-place*.
 
     Parameters
     ----------
     match
-    molecule: nx.Graph
+    molecule: networkx.Graph
         The original molecule
-    graph_out: vermouth.Molecule
+    graph_out: vermouth.molecule.Molecule
         The newly created graph that describes `molecule` at a different
         resolution.
     mol_to_out: dict[collections.abc.Hashable, dict[collections.abc.Hashable, float]]
@@ -355,9 +357,9 @@ def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
     Parameters
     ----------
     match
-    molecule: nx.Graph
+    molecule: networkx.Graph
         The original molecule
-    graph_out: vermouth.Molecule
+    graph_out: vermouth.molecule.Molecule
         The newly created graph that describes `molecule` at a different
         resolution.
     mol_to_out: dict[collections.abc.Hashable, dict[collections.abc.Hashable, float]]
@@ -369,7 +371,7 @@ def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
 
     Returns
     -------
-    dict[str, dict[tuple, vermouth.Link]]
+    dict[str, dict[tuple, vermouth.molecule.Link]]
         A dict of all modifications that have been applied by this modification
         mapping operations. Maps interaction type to involved atoms to the
         modification responsible.

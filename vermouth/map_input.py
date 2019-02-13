@@ -50,7 +50,7 @@ def read_backmapping_file(lines, force_fields):
     ----------
     lines: collections.abc.Iterable[str]
         Collection of lines to read.
-    force_fields: dict[str, ForceFields]
+    force_fields: dict[str, vermouth.forcefield.ForceField]
         Dict of known force fields.
 
     Return
