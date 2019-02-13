@@ -500,6 +500,8 @@ def do_mapping(molecule, mappings, to_ff, attribute_keep=(), attribute_must=()):
         A new molecule, created by transforming `molecule` to `to_ff` according
         to `mappings`.
     """
+    attribute_keep = tuple(attribute_keep)
+    attribute_must = tuple(attribute_must)
     # Transfering the meta maybe should be a copy, or a deep copy...
     # If it breaks we look at this line.
     graph_out = Molecule(force_field=to_ff, meta=molecule.meta)
