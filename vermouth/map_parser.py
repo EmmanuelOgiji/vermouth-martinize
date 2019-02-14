@@ -222,8 +222,8 @@ class MappingBuilder:
         Reset the object to a clean initial state.
         """
         self.mapping = defaultdict(dict)
-        self.blocks_from = None
-        self.blocks_to = None
+        self.blocks_from = Block()
+        self.blocks_to = Block()
         self.ff_from = None
         self.ff_to = None
         self.names = []
@@ -265,7 +265,7 @@ class MappingBuilder:
         vermouth.molecule.Block
             The combination of `current_block` and `new_block`
         """
-        if current_block is None:
+        if not current_block:
             current_block = new_block.to_molecule(default_attributes={})
         else:
             current_block.merge_molecule(new_block)
@@ -315,9 +315,9 @@ class MappingBuilder:
         attrs: dict[str]
             The attributes the new node should have.
         """
-        if self.blocks_from is None:
+        if not self.blocks_from:
             self.blocks_from = Block()
-            idx = 1
+            idx = 0
         else:
             idx = max(self.blocks_from.nodes) + 1
         self.blocks_from.add_node(idx, **attrs)
@@ -331,14 +331,14 @@ class MappingBuilder:
         attrs: dict[str]
             The attributes the new node should have.
         """
-        if self.blocks_to is None:
+        if not self.blocks_to:
             self.blocks_to = Block()
-            idx = 1
+            idx = 0
         else:
             idx = max(self.blocks_to.nodes) + 1
         self.blocks_to.add_node(idx, **attrs)
 
-    def add_edge_from(self, attrs1, attrs2):
+    def add_edge_from(self, attrs1, attrs2, edge_attrs):
         """
         Add a single edge to :attr:`blocks_from` between two nodes in
         :attr:`blocks_from` described by `attrs1` and `attrs2`. The nodes
@@ -352,14 +352,16 @@ class MappingBuilder:
         attrs2: dict[str]
             The attributes that uniquely describe a node in
             :attr:`blocks_from`
+        edge_attrs: dict[str]
+            The attributes that should be assigned to the new edge.
         """
         nodes1 = list(self.blocks_from.find_atoms(**attrs1))
         nodes2 = list(self.blocks_from.find_atoms(**attrs2))
         assert len(nodes1) == len(nodes2) == 1
         assert nodes1 != nodes2
-        self.blocks_from.add_edge(nodes1[0], nodes2[0])
+        self.blocks_from.add_edge(nodes1[0], nodes2[0], **edge_attrs)
 
-    def add_edge_to(self, attrs1, attrs2):
+    def add_edge_to(self, attrs1, attrs2, edge_attrs):
         """
         Add a single edge to :attr:`blocks_to` between two nodes in
         :attr:`blocks_to` described by `attrs1` and `attrs2`. The nodes
@@ -373,12 +375,14 @@ class MappingBuilder:
         attrs2: dict[str]
             The attributes that uniquely describe a node in
             :attr:`blocks_to`
+        edge_attrs: dict[str]
+            The attributes that should be assigned to the new edge.
         """
         nodes1 = list(self.blocks_to.find_atoms(**attrs1))
         nodes2 = list(self.blocks_to.find_atoms(**attrs2))
         assert len(nodes1) == len(nodes2) == 1
         assert nodes1 != nodes2
-        self.blocks_to.add_edge(nodes1[0], nodes2[0])
+        self.blocks_to.add_edge(nodes1[0], nodes2[0], **edge_attrs)
 
     def add_mapping(self, attrs_from, attrs_to, weight):
         """
@@ -435,8 +439,8 @@ class MappingBuilder:
         Mapping
             The mapping object made from the accumulated information.
         """
-        if self.blocks_from is None:
-            return None
+        #if self.blocks_from is None:
+        #    return None
         mapping = Mapping(self.blocks_from, self.blocks_to, dict(self.mapping),
                           self.references, ff_from=self.ff_from, ff_to=self.ff_to,
                           type=type, names=tuple(self.names))
@@ -554,6 +558,8 @@ class MappingDirector(SectionLineParser):
         else:  # It must be shorthand
             for identifier in tokens:
                 resname, resid = self._parse_block_shorthand(identifier)
+                if resname.startswith(self.NO_FETCH_BLOCK):
+                    resname = resname[len(self.NO_FETCH_BLOCK):]
                 attrs = {'resname': resname, 'resid': resid}
                 yield identifier, attrs
 
@@ -781,10 +787,14 @@ class MappingDirector(SectionLineParser):
         """
         builder_methods = {'from': self.builder.add_edge_from,
                            'to': self.builder.add_edge_to}
-        at1, at2 = line.split()
+        at1, at2, *attrs = _tokenize(line)
         attrs1 = self._resolve_atom_spec(at1, direction)
         attrs2 = self._resolve_atom_spec(at2, direction)
-        builder_methods[direction](attrs1, attrs2)
+        if attrs:
+            attrs = _parse_atom_attributes(*attrs)
+        else:
+            attrs = {}
+        builder_methods[direction](attrs1, attrs2, attrs)
 
     @SectionLineParser.section_parser('modification', 'mapping')
     @SectionLineParser.section_parser('block', 'mapping')
