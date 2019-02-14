@@ -28,8 +28,14 @@ from vermouth.map_parser import MappingDirector, MappingBuilder
 from vermouth.tests.helper_functions import equal_graphs
 
 
+# PyLint does *not* like pytest fixtures...
+# pylint: disable=redefined-outer-name
+
 @pytest.fixture
 def force_fields():
+    """
+    Creates a simple forcefield for tests
+    """
     ffa = ForceField(name='test_A')
     block_a = Block(name='block_A', force_field=ffa)
     block_a.add_nodes_from(['A1', 'A2', 'B1', 'B2'])
@@ -46,6 +52,9 @@ def force_fields():
 
 
 def equal_graph_data(found_nodes, found_edges, expected_nodes, expected_edges):
+    """
+    Returns True iff the data provided produces two equivalent graphs.
+    """
     found_graph = nx.Graph()
     found_graph.add_nodes_from(found_nodes)
     found_graph.add_edges_from(found_edges)
@@ -57,6 +66,9 @@ def equal_graph_data(found_nodes, found_edges, expected_nodes, expected_edges):
 
 @pytest.fixture
 def director(force_fields):
+    """
+    Produces a MappinDirector for parsing.
+    """
     return MappingDirector(force_fields=force_fields, builder=MappingBuilder())
 
 
@@ -242,7 +254,7 @@ def director(force_fields):
             'mapping': {0: {0: 1}, 1: {0: 1}},
             'references': {}
         }
-    
+
     ),
     (  # Reference atoms and mapping weights
         """
@@ -365,10 +377,14 @@ def director(force_fields):
         B2 A
         """,
         {
-            'block_from': ([(0, {"resname": 'block_A', 'resid': 1, 'atomname': 'A1', 'charge_group': 1}),
-                            (1, {"resname": 'block_A', 'resid': 1, 'atomname': 'A2', 'charge_group': 1}),
-                            (2, {"resname": 'block_A', 'resid': 1, 'atomname': 'B1', 'charge_group': 1}),
-                            (3, {"resname": 'block_A', 'resid': 1, 'atomname': 'B2', 'charge_group': 1})],
+            'block_from': ([(0, {"resname": 'block_A', 'resid': 1,
+                                 'atomname': 'A1', 'charge_group': 1}),
+                            (1, {"resname": 'block_A', 'resid': 1,
+                                 'atomname': 'A2', 'charge_group': 1}),
+                            (2, {"resname": 'block_A', 'resid': 1,
+                                 'atomname': 'B1', 'charge_group': 1}),
+                            (3, {"resname": 'block_A', 'resid': 1,
+                                 'atomname': 'B2', 'charge_group': 1})],
                            [(0, 1, {}), (2, 3, {})]),
             'block_to': ([(0, {"resname": 'A', 'resid': 1, 'atomname': 'A'})],
                          []),
@@ -396,10 +412,14 @@ def director(force_fields):
         C  A
         """,
         {
-            'block_from': ([(0, {"resname": 'block_A', 'resid': 1, 'atomname': 'A1', 'charge_group': 1}),
-                            (1, {"resname": 'block_A', 'resid': 1, 'atomname': 'A2', 'charge_group': 1}),
-                            (2, {"resname": 'block_A', 'resid': 1, 'atomname': 'B1', 'charge_group': 1}),
-                            (3, {"resname": 'block_A', 'resid': 1, 'atomname': 'B2', 'charge_group': 1}),
+            'block_from': ([(0, {"resname": 'block_A', 'resid': 1,
+                                 'atomname': 'A1', 'charge_group': 1}),
+                            (1, {"resname": 'block_A', 'resid': 1,
+                                 'atomname': 'A2', 'charge_group': 1}),
+                            (2, {"resname": 'block_A', 'resid': 1,
+                                 'atomname': 'B1', 'charge_group': 1}),
+                            (3, {"resname": 'block_A', 'resid': 1,
+                                 'atomname': 'B2', 'charge_group': 1}),
                             (4, {'resid': 1, 'atomname': 'C'})],
                            [(0, 1, {}), (2, 3, {})]),
             'block_to': ([(0, {'resid': 1, 'atomname': 'A'})],
@@ -430,14 +450,22 @@ def director(force_fields):
         A B2
         """,
         {
-            'block_to': ([(0, {"resname": 'block_A', 'resid': 1, 'atomname': 'A1', 'charge_group': 1}),
-                          (1, {"resname": 'block_A', 'resid': 1, 'atomname': 'A2', 'charge_group': 1}),
-                          (2, {"resname": 'block_A', 'resid': 1, 'atomname': 'B1', 'charge_group': 1}),
-                          (3, {"resname": 'block_A', 'resid': 1, 'atomname': 'B2', 'charge_group': 1}),
-                          (4, {"resname": 'block_A', 'resid': 2, 'atomname': 'A1', 'charge_group': 2}),
-                          (5, {"resname": 'block_A', 'resid': 2, 'atomname': 'A2', 'charge_group': 2}),
-                          (6, {"resname": 'block_A', 'resid': 2, 'atomname': 'B1', 'charge_group': 2}),
-                          (7, {"resname": 'block_A', 'resid': 2, 'atomname': 'B2', 'charge_group': 2})],
+            'block_to': ([(0, {"resname": 'block_A', 'resid': 1,
+                               'atomname': 'A1', 'charge_group': 1}),
+                          (1, {"resname": 'block_A', 'resid': 1,
+                               'atomname': 'A2', 'charge_group': 1}),
+                          (2, {"resname": 'block_A', 'resid': 1,
+                               'atomname': 'B1', 'charge_group': 1}),
+                          (3, {"resname": 'block_A', 'resid': 1,
+                               'atomname': 'B2', 'charge_group': 1}),
+                          (4, {"resname": 'block_A', 'resid': 2,
+                               'atomname': 'A1', 'charge_group': 2}),
+                          (5, {"resname": 'block_A', 'resid': 2,
+                               'atomname': 'A2', 'charge_group': 2}),
+                          (6, {"resname": 'block_A', 'resid': 2,
+                               'atomname': 'B1', 'charge_group': 2}),
+                          (7, {"resname": 'block_A', 'resid': 2,
+                               'atomname': 'B2', 'charge_group': 2})],
                          [(0, 1, {}), (2, 3, {}), (4, 5, {}), (6, 7, {})]),
             'block_from': ([(0, {"resname": 'A', 'resid': 1, 'atomname': 'A'})],
                            []),
@@ -459,7 +487,8 @@ def director(force_fields):
         B A
         """,
         {
-            'block_from': ([(0, {"resname": 'block_B', 'resid': 1, 'atomname': 'B', 'charge_group': 1})],
+            'block_from': ([(0, {"resname": 'block_B', 'resid': 1,
+                                 'atomname': 'B', 'charge_group': 1})],
                            []),
             'block_to': ([(0, {"resname": 'A', 'resid': 1, 'atomname': 'A'})],
                          []),
@@ -481,15 +510,21 @@ def director(force_fields):
         A A
         """,
         {
-            'block_to': ([(0, {"resname": 'block_B', 'resid': 1, 'atomname': 'A', 'charge_group': 1, 'replace': {'atomname': 'B'}})],
-                           []),
-            'block_from': ([(0, {"resname": 'A', 'resid': 1, 'atomname': 'A'})],
+            'block_to': ([(0, {"resname": 'block_B', 'resid': 1,
+                               'atomname': 'A', 'charge_group': 1,
+                               'replace': {'atomname': 'B'}})],
                          []),
+            'block_from': ([(0, {"resname": 'A', 'resid': 1, 'atomname': 'A'})],
+                           []),
             'mapping': {0: {0: 1}}
         }
     ),
 ))
 def test_single_mapping_attrs(director, lines, expected):
+    """
+    Tests that when a file defines a single mapping the produced mapping has
+    the correct attributes.
+    """
     lines = textwrap.dedent(lines).splitlines()
     mappings = list(director.parse(lines))
     assert len(mappings) == 1
@@ -505,18 +540,20 @@ def test_single_mapping_attrs(director, lines, expected):
 
 
 @pytest.mark.parametrize('map_type', (
-        '[block]',
-        '[modification]'
-    )
-)
+    '[block]',
+    '[modification]'
+))
 @pytest.mark.parametrize('number', (
     1,
     2,
     3
 ))
 def test_multiple_mappings(director, map_type, number):
+    """
+    Tests that when a single file defines multiple mappings it produces the
+    correct number of mappings.
+    """
     lines = (map_type + '\n') * number
     lines = lines.splitlines()
     mappings = list(director.parse(lines))
     assert len(mappings) == number
-    
