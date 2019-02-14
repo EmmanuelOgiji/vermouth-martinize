@@ -19,10 +19,13 @@ Unit tests for the mapping file parser and its utilities.
 """
 import textwrap
 
+import networkx as nx
 import pytest
+
 from vermouth.forcefield import ForceField
 from vermouth.molecule import Block, Link
 from vermouth.map_parser import MappingDirector, MappingBuilder
+from vermouth.tests.helper_functions import equal_graphs
 
 
 @pytest.fixture
@@ -42,14 +45,14 @@ def force_fields():
     return {'test_A': ffa}
 
 
-def nodes_equal(found_nodes, expected_nodes):
-    found_keys, found_attrs = zip(*found_nodes)
-    exp_keys, exp_attrs = zip(*expected_nodes)
-    assert len(found_keys) == len(exp_keys)
-    assert set(found_keys) == set(exp_keys)
-    for attr in found_attrs:
-        assert attr in exp_attrs
-    
+def equal_graph_data(found_nodes, found_edges, expected_nodes, expected_edges):
+    found_graph = nx.Graph()
+    found_graph.add_nodes_from(found_nodes)
+    found_graph.add_edges_from(found_edges)
+    exp_graph = nx.Graph()
+    exp_graph.add_nodes_from(expected_nodes)
+    exp_graph.add_edges_from(expected_edges)
+    return equal_graphs(found_graph, exp_graph, node_attrs=None, edge_attrs=None)
 
 
 @pytest.fixture
@@ -494,7 +497,8 @@ def test_single_mapping_attrs(director, lines, expected):
     for attr_name, val in expected.items():
         if 'block' in attr_name:
             nodes, edges = val
-            nodes_equal(getattr(mapping, attr_name).nodes(data=True), nodes)
-            assert list(getattr(mapping, attr_name).edges(data=True)) == edges, "{} edges".format(attr_name)
+            equal_graph_data(list(getattr(mapping, attr_name).nodes(data=True)),
+                             list(getattr(mapping, attr_name).edges(data=True)),
+                             nodes, edges)
         else:
             assert getattr(mapping, attr_name) == val, attr_name

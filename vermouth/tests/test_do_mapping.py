@@ -20,8 +20,7 @@ from vermouth.processors.do_mapping import do_mapping
 import vermouth.forcefield
 from vermouth.molecule import Molecule, Block
 from vermouth.map_parser import Mapping
-import networkx.algorithms.isomorphism as iso
-
+from vermouth.tests.helper_functions import equal_graphs
 
 FF_MARTINI = vermouth.forcefield.get_native_force_field(name='martini22')
 FF_UNIVERSAL = vermouth.forcefield.get_native_force_field(name='universal')
@@ -83,13 +82,6 @@ FF_MARTINI.blocks['IPO_large'] = block_cg
 FF_UNIVERSAL.blocks['IPO_large'] = block_aa
 
 
-def _equal_graphs(g1, g2):
-    attrs = ['resid', 'resname', 'atomname', 'chain', 'charge_group', 'atype']
-    node_equal = iso.categorical_node_match(attrs, ['']*len(attrs))
-    matcher = iso.GraphMatcher(g1, g2, node_match=node_equal)
-    return matcher.is_isomorphic()
-
-
 def test_no_residue_crossing():
     """
     Make sure we don't cross residue boundaries
@@ -120,7 +112,7 @@ def test_no_residue_crossing():
     print('-'*80)
     print(expected.nodes(data=True))
     print(expected.edges())
-    assert _equal_graphs(cg, expected)
+    assert equal_graphs(cg, expected)
 
 
 def test_residue_crossing():
@@ -156,7 +148,7 @@ def test_residue_crossing():
     print('-'*80)
     print(expected.nodes(data=True))
     print(expected.edges())
-    assert _equal_graphs(cg, expected)
+    assert equal_graphs(cg, expected)
 
 
 def _map_weights(mapping):
@@ -275,7 +267,7 @@ def test_peptide():
     print(expected.nodes(data=True))
     print(expected.edges())
 
-    assert _equal_graphs(cg, expected)
+    assert equal_graphs(cg, expected)
 
 if __name__ == '__main__':
     test_peptide()
