@@ -502,3 +502,21 @@ def test_single_mapping_attrs(director, lines, expected):
                              nodes, edges)
         else:
             assert getattr(mapping, attr_name) == val, attr_name
+
+
+@pytest.mark.parametrize('map_type', (
+        '[block]',
+        '[modification]'
+    )
+)
+@pytest.mark.parametrize('number', (
+    1,
+    2,
+    3
+))
+def test_multiple_mappings(director, map_type, number):
+    lines = (map_type + '\n') * number
+    lines = lines.splitlines()
+    mappings = list(director.parse(lines))
+    assert len(mappings) == number
+    
