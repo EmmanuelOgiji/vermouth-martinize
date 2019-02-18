@@ -16,11 +16,12 @@
 
 from collections import defaultdict
 
+import pprint
 import pytest
 
-from vermouth.processors.do_mapping import do_mapping, cover
+from vermouth.processors.do_mapping import do_mapping, cover, modification_matches
 import vermouth.forcefield
-from vermouth.molecule import Molecule, Block
+from vermouth.molecule import Molecule, Block, Link
 from vermouth.map_parser import Mapping
 from vermouth.tests.helper_functions import equal_graphs
 
@@ -293,3 +294,123 @@ def test_peptide():
 def test_cover(to_cover, options, expected):
     output = cover(to_cover, options)
     assert output == expected
+
+
+@pytest.fixture
+def modifications():
+    mods = {}
+    mod_a = Link(force_field=FF_UNIVERSAL, name='mA')
+    mod_a.add_node('mA', atomname='mA', PTM_atom=True)
+    mods['mA'] = mod_a
+
+    mod_c = Link(force_field=FF_UNIVERSAL, name='mC')
+    mod_c.add_node('mC', atomname='mC', PTM_atom=True)
+    mods['mC'] = mod_c
+
+    mod_d = Link(force_field=FF_UNIVERSAL, name='mD')
+    mod_d.add_node('mD', atomname='mD', PTM_atom=True)
+    mods['mD'] = mod_d
+
+    mod_fg = Link(force_field=FF_UNIVERSAL, name='mFG')
+    mod_fg.add_node('mF', atomname='mF', PTM_atom=True)
+    mod_fg.add_node('mG', atomname='mG', PTM_atom=True)
+    mod_fg.add_edge('mF', 'mG')
+    mods['mFG'] = mod_fg
+
+    mod_i = Link(force_field=FF_UNIVERSAL, name='mI')
+    mod_i.add_node('mI', atomname='mI', PTM_atom=True)
+    mods['mI'] = mod_i
+    mod_i2 = Link(force_field=FF_UNIVERSAL, name='mI2')
+    mod_i2.add_node('mI2', atomname='mI2', PTM_atom=True)
+    mods['mI2'] = mod_i2
+
+    mod_j = Link(force_field=FF_UNIVERSAL, name='mJ')
+    mod_j.add_node('mJ', atomname='mJ', PTM_atom=True)
+    mods['mJ'] = mod_j
+    mod_j2 = Link(force_field=FF_UNIVERSAL, name='mJ2')
+    mod_j2.add_node('mJ2', atomname='mJ2', PTM_atom=True)
+    mods['mJ2'] = mod_j2
+    return mods
+
+
+@pytest.fixture
+def modified_molecule(modifications):
+    mol = Molecule(force_field=FF_UNIVERSAL)
+    mol.add_nodes_from(enumerate((
+        # Lone PTM
+        {'atomname': 'A', 'resid': 1, 'modifications': [modifications['mA']]},
+        {'atomname': 'mA', 'resid': 1, 'PTM_atom': True, 'modifications': [modifications['mA']]},
+        {'atomname': 'B', 'resid': 2},  # Spacer
+        # Two PTMs on neighbouring residues
+        {'atomname': 'C', 'resid': 3, 'modifications': [modifications['mC']]},
+        {'atomname': 'mC', 'resid': 3, 'PTM_atom': True, 'modifications': [modifications['mC']]},
+        {'atomname': 'D', 'resid': 4, 'modifications': [modifications['mD']]},
+        {'atomname': 'mD', 'resid': 4, 'PTM_atom': True, 'modifications': [modifications['mD']]},
+        {'atomname': 'E', 'resid': 5},  # Spacer
+        # Bridging PTMs
+        {'atomname': 'F', 'resid': 6, 'modifications': [modifications['mFG']]},
+        {'atomname': 'mF', 'resid': 6, 'PTM_atom': True, 'modifications': [modifications['mFG']]},
+        {'atomname': 'G', 'resid': 7, 'modifications': [modifications['mFG']]},
+        {'atomname': 'mG', 'resid': 7, 'PTM_atom': True, 'modifications': [modifications['mFG']]},
+        {'atomname': 'H', 'resid': 8},  # Spacer
+        # Two PTMs for one residue
+        {'atomname': 'I', 'resid': 9, 'modifications': [modifications['mI'], modifications['mI2']]},
+        {'atomname': 'mI', 'resid': 9, 'PTM_atom': True, 'modifications': [modifications['mI']]},
+        {'atomname': 'mI2', 'resid': 9, 'PTM_atom': True, 'modifications': [modifications['mI2']]},
+        # Two PTMs for one residue, but a single mod mapping
+        {'atomname': 'J', 'resid': 10, 'modifications': [modifications['mJ'], modifications['mJ2']]},
+        {'atomname': 'mJ', 'resid': 10, 'PTM_atom': True, 'modifications': [modifications['mJ']]},
+        {'atomname': 'mJ2', 'resid': 10, 'PTM_atom': True, 'modifications': [modifications['mJ2']]}
+    )))
+    mol.add_edges_from((
+        (0, 1), (0, 2),  # A
+        (2, 3),  # B
+        (3, 4), (3, 5),  # C
+        (5, 6), (5, 7),  # D
+        (7, 8),  # E
+        (8, 9), (8, 10),  # F
+        (9, 11),  # Bridge between mF and mG
+        (10, 11), (10, 12),  # G
+        (12, 13),  # H
+        (13, 14), (13, 15), (13, 16),  # I
+        (16, 17), (16, 18)  # J
+    ))
+    return mol
+
+
+def test_mod_matches(modified_molecule, modifications):
+    mappings = []
+    for name in 'ABCDEFGHI':
+        block = Block(force_field=FF_UNIVERSAL, name=name)
+        block.add_node(name, atomname=name)
+        mappings.append(Mapping(block, block, mapping={name: {name: 1}},
+                                references={}, ff_from=FF_UNIVERSAL,
+                                ff_to=FF_UNIVERSAL, names=(name,)))
+    for mod in modifications.values():
+        mappings.append(Mapping(mod, mod, mapping={idx: {idx: 1} for idx in mod},
+                                references={}, ff_from=FF_UNIVERSAL,
+                                ff_to=FF_UNIVERSAL, names=(mod.name,), type='modification'))
+    mod = Link(name=('mJ', 'mJ2'), force_field=FF_UNIVERSAL)
+    mod.add_nodes_from((['mJ', {'atomname': 'mJ', 'PTM_atom': True}],
+                        ['mJ2', {'atomname': 'mJ2', 'PTM_atom': True}],
+                        ['J', {'atomname': 'J', 'PTM_atom': False}]))
+    mod.add_edges_from([('J', 'mJ'), ('J', 'mJ2')])
+    mappings.append(Mapping(mod, mod, mapping={idx: {idx: 1} for idx in mod},
+                            references={}, ff_from=FF_UNIVERSAL,
+                            ff_to=FF_UNIVERSAL, names=('mJ', 'mJ2'), type='modification'))
+
+    print([m.names for m in mappings])
+    found = list(modification_matches(modified_molecule, mappings))
+    expected = [
+        ({1: {'mA': 1}}, modifications['mA'], {}),
+        ({4: {'mC': 1}}, modifications['mC'], {}),
+        ({6: {'mD': 1}}, modifications['mD'], {}),
+        ({9: {'mF': 1}, 11: {'mG': 1}}, modifications['mFG'], {}),
+        ({14: {'mI': 1}}, modifications['mI'], {}),
+        ({15: {'mI2': 1}}, modifications['mI2'], {}),
+        ({16: {'J': 1}, 17: {'mJ': 1}, 18: {'mJ2': 1}}, mod, {}),
+    ]
+    pprint.pprint(found)
+    assert len(expected) == len(found)
+    for item in found:
+        assert item in expected

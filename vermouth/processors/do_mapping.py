@@ -248,10 +248,7 @@ def modification_matches(molecule, mappings):
                          tuple(mod.name for mod in molecule.nodes[mol_idx].get('modifications', []))
                          for mol_idx in group
                         }
-        # Every group of PTMs should have the same modifications
-        assert len(modifications) == 1
         found_ptm_groups.update(modifications)
-
     needed_mod_mappings = set()
     known_mod_mappings = get_mod_mappings(mappings)
     for group in found_ptm_groups:
@@ -267,10 +264,9 @@ def modification_matches(molecule, mappings):
             LOGGER.warning("Can't find modification mappings for the "
                            "modifications {}. The following modification "
                            "mappings are known: {}",
-                           [ptm.name for ptm in group], known_mod_mappings)
+                           [ptm for ptm in group], known_mod_mappings)
             continue
         needed_mod_mappings.update(covered_by)
-
     matches = []
     # Sort on the tuple[str] type names of the mappings so that mappings that
     # define most modifications at the same time get processed first
