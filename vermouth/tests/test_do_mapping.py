@@ -16,7 +16,9 @@
 
 from collections import defaultdict
 
-from vermouth.processors.do_mapping import do_mapping
+import pytest
+
+from vermouth.processors.do_mapping import do_mapping, cover
 import vermouth.forcefield
 from vermouth.molecule import Molecule, Block
 from vermouth.map_parser import Mapping
@@ -106,7 +108,7 @@ def test_no_residue_crossing():
         (2, {'resid': 3, 'resname': 'IPO', 'atomname': 'B1', 'chain': 'A', 'charge_group': 3}),
             ))
     expected.add_edges_from(([0, 1], [1, 2]))
-    
+
     print(cg.nodes(data=True))
     print(cg.edges())
     print('-'*80)
@@ -142,7 +144,7 @@ def test_residue_crossing():
         (2, {'resid': 3, 'resname': 'IPO_large', 'atomname': 'B1', 'chain': 'A', 'charge_group': 1}),
             ))
     expected.add_edges_from(([0, 1], [1, 2]))
-    
+
     print(cg.nodes(data=True))
     print(cg.edges())
     print('-'*80)
@@ -172,7 +174,7 @@ def test_peptide():
     leu = {'C': {'BB': 1}, 'N': {'BB': 1}, 'O': {'BB': 1}, 'CA': {'BB': 1},
            'CB': {'SC1': 1}, 'CG': {'SC1': 1}, 'CD1': {'SC1': 1}, 'CD2': {'SC1': 1}}
     extra = ()
-    
+
     mappings = {'universal': {'martini22': {}}}
     mappings['universal']['martini22']['GLY'] = Mapping(FF_UNIVERSAL.blocks['GLY'],
                                                         FF_MARTINI.blocks['GLY'],
@@ -198,7 +200,7 @@ def test_peptide():
                                                         ff_to=FF_MARTINI,
                                                         names=('LEU',),
                                                         extra=extra)
-    
+
     peptide = Molecule(force_field=FF_UNIVERSAL)
     aa = FF_UNIVERSAL.blocks['GLY'].to_molecule()
     peptide.merge_molecule(aa)
@@ -258,7 +260,7 @@ def test_peptide():
                                  'resname': 'LEU'}}.items()
                             )
     expected.add_edges_from([(1, 2), (2, 3), (2, 4), (4, 5)])
-    
+
     for node in expected:
         expected.nodes[node]['atomid'] = node + 1
     print(cg.nodes(data=True))
@@ -269,5 +271,25 @@ def test_peptide():
 
     assert equal_graphs(cg, expected)
 
-if __name__ == '__main__':
-    test_peptide()
+
+@pytest.mark.parametrize('to_cover, options, expected', (
+    ([], [], []),
+    ([], [[1, 2], [3, 4]], []),
+    ([1, 2, 3], [[1, 2, 3]], [[1, 2, 3]]),
+    ([1, 2, 3], [[1], [2], [3]], [[1], [2], [3]]),
+    ([1, 2, 3], [[1, 2, 3], [4]], [[1, 2, 3]]),
+    ([1, 2, 3], [[1], [2], [3], [4]], [[1], [2], [3]]),
+    ([1, 2, 3], [[4], [1, 2, 3]], [[1, 2, 3]]),
+    ([1, 2, 3], [[4], [1], [2], [3], [5]], [[1], [2], [3]]),
+    ([1, 2, 3], [[1, 3], [1], [2], [3], [4]], [[1, 3], [2]]),
+    ([1, 2, 3], [[1, 3, 4], [1], [2], [3], [4]], [[1], [2], [3]]),
+    ([1, 2, 3], [[1, 3, 4], [1], [2], [3], [1, 2, 3]], [[1], [2], [3]]),
+    ([1, 2, 3], [], None),
+    ([1, 2, 3], [[1, 2]], None),
+    ([1, 2, 3], [[1, 2], [2, 3]], None),
+    ([1, 2, 3], [[1, 2], [3, 4]], None),
+    ([1, 2, 3], [[1, 2], [4]], None),
+))
+def test_cover(to_cover, options, expected):
+    output = cover(to_cover, options)
+    assert output == expected
