@@ -15,11 +15,12 @@
 # limitations under the License.
 
 from collections import defaultdict
-
 import pprint
+
+import networkx as nx
 import pytest
 
-from vermouth.processors.do_mapping import do_mapping, cover, modification_matches
+from vermouth.processors.do_mapping import do_mapping, cover, modification_matches, apply_mod_mapping
 import vermouth.forcefield
 from vermouth.molecule import Molecule, Block, Link
 from vermouth.map_parser import Mapping
@@ -330,6 +331,12 @@ def modifications():
     mod_j2 = Link(force_field=FF_UNIVERSAL, name='mJ2')
     mod_j2.add_node('mJ2', atomname='mJ2', PTM_atom=True)
     mods['mJ2'] = mod_j2
+    mod = Link(name=('mJ', 'mJ2'), force_field=FF_UNIVERSAL)
+    mod.add_nodes_from((['mJ', {'atomname': 'mJ', 'PTM_atom': True}],
+                        ['mJ2', {'atomname': 'mJ2', 'PTM_atom': True}],
+                        ['J', {'atomname': 'J', 'PTM_atom': False}]))
+    mod.add_edges_from([('J', 'mJ'), ('J', 'mJ2')])
+    mods[('mJ', 'mJ2')] = mod
     return mods
 
 
@@ -380,24 +387,17 @@ def modified_molecule(modifications):
 
 def test_mod_matches(modified_molecule, modifications):
     mappings = []
-    for name in 'ABCDEFGHI':
+    for name in 'ABCDEFGHIJ':
         block = Block(force_field=FF_UNIVERSAL, name=name)
         block.add_node(name, atomname=name)
         mappings.append(Mapping(block, block, mapping={name: {name: 1}},
                                 references={}, ff_from=FF_UNIVERSAL,
                                 ff_to=FF_UNIVERSAL, names=(name,)))
     for mod in modifications.values():
+        name = (mod.name,) if isinstance(mod.name, str) else mod.name
         mappings.append(Mapping(mod, mod, mapping={idx: {idx: 1} for idx in mod},
                                 references={}, ff_from=FF_UNIVERSAL,
-                                ff_to=FF_UNIVERSAL, names=(mod.name,), type='modification'))
-    mod = Link(name=('mJ', 'mJ2'), force_field=FF_UNIVERSAL)
-    mod.add_nodes_from((['mJ', {'atomname': 'mJ', 'PTM_atom': True}],
-                        ['mJ2', {'atomname': 'mJ2', 'PTM_atom': True}],
-                        ['J', {'atomname': 'J', 'PTM_atom': False}]))
-    mod.add_edges_from([('J', 'mJ'), ('J', 'mJ2')])
-    mappings.append(Mapping(mod, mod, mapping={idx: {idx: 1} for idx in mod},
-                            references={}, ff_from=FF_UNIVERSAL,
-                            ff_to=FF_UNIVERSAL, names=('mJ', 'mJ2'), type='modification'))
+                                ff_to=FF_UNIVERSAL, names=name, type='modification'))
 
     print([m.names for m in mappings])
     found = list(modification_matches(modified_molecule, mappings))
@@ -408,9 +408,71 @@ def test_mod_matches(modified_molecule, modifications):
         ({9: {'mF': 1}, 11: {'mG': 1}}, modifications['mFG'], {}),
         ({14: {'mI': 1}}, modifications['mI'], {}),
         ({15: {'mI2': 1}}, modifications['mI2'], {}),
-        ({16: {'J': 1}, 17: {'mJ': 1}, 18: {'mJ2': 1}}, mod, {}),
+        ({16: {'J': 1}, 17: {'mJ': 1}, 18: {'mJ2': 1}}, modifications['mJ', 'mJ2'], {}),
     ]
     pprint.pprint(found)
     assert len(expected) == len(found)
     for item in found:
         assert item in expected
+
+
+def test_apply_mod_mapping(modified_molecule, modifications):
+    graph_out = Molecule(force_field=FF_UNIVERSAL)
+    graph_out.add_nodes_from([
+        (0, {'atomname': 'A', 'resid': 1})
+    ])
+    mol_to_out = {0: {0: 1}}
+    out_to_mol = {0: {0: 1}}
+    match = ({1: {'mA': 1}}, modifications['mA'], {})
+
+    out = apply_mod_mapping(match, modified_molecule, graph_out, mol_to_out, out_to_mol)
+    print(mol_to_out)
+    print(out_to_mol)
+    assert graph_out.nodes[1] == modifications['mA'].nodes['mA']
+    assert out == ({}, {})
+    assert mol_to_out == {0: {0: 1}, 1: {1: 1}}
+    assert out_to_mol == {0: {0: 1}, 1: {1: 1}}
+
+    graph_out.add_node(2, atomname='J', resid=2)
+    mol_to_out[16] = {2: 1}
+    out_to_mol[2] = {16: 1}
+
+    out = apply_mod_mapping(({16: {'J': 1}, 17: {'mJ': 1}, 18: {'mJ2': 1}}, modifications['mJ', 'mJ2'], {}), modified_molecule, graph_out, mol_to_out, out_to_mol)
+    print(mol_to_out)
+    print(out_to_mol)
+    assert out == ({}, {})
+    assert mol_to_out == {0: {0: 1}, 1: {1: 1}, 16: {2: 1}, 17: {3: 1}, 18: {4: 1}}
+    assert out_to_mol == {0: {0: 1}, 1: {1: 1}, 2: {16: 1}, 3: {17: 1}, 4: {18: 1}}
+
+
+def test_do_mapping_mods(modified_molecule, modifications):
+    mappings = {}
+    for name in 'ABCDEFGHIJ':
+        block = Block(force_field=FF_UNIVERSAL, name=name)
+        block.add_node(name, atomname=name, resid=1)
+        mappings[name] = Mapping(block, block, mapping={name: {name: 1}},
+                                 references={}, ff_from=FF_UNIVERSAL,
+                                 ff_to=FF_UNIVERSAL, names=(name,))
+    for mod in modifications.values():
+        name = (mod.name,) if isinstance(mod.name, str) else mod.name
+        mappings[name] = Mapping(mod, mod, mapping={idx: {idx: 1} for idx in mod},
+                                 references={}, ff_from=FF_UNIVERSAL,
+                                 ff_to=FF_UNIVERSAL, names=name, type='modification')
+    mappings = {'universal': {'universal': mappings}}
+
+    out = do_mapping(modified_molecule, mappings, FF_UNIVERSAL,
+                     attribute_keep=('chain', 'resid'))
+    pprint.pprint(list(out.nodes(data=True)))
+    pprint.pprint(list(out.edges))
+    
+
+    expected = modified_molecule.copy()
+    for node in expected.nodes:
+        expected.nodes[node]['mapping_weights'] = {node: 1}
+        expected.nodes[node]['graph'] = expected.subgraph([node])
+
+    expected = nx.relabel_nodes(expected, {idx: idx+1 for idx in expected})
+    pprint.pprint(list(expected.nodes(data='atomname')))
+    pprint.pprint(list(expected.edges))
+    
+    assert equal_graphs(expected, out, node_attrs=['atomname', 'resid', 'mapping_weights'])
