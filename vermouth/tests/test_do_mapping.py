@@ -26,7 +26,7 @@ import pytest
 
 from vermouth.processors.do_mapping import do_mapping, cover, modification_matches, apply_mod_mapping
 import vermouth.forcefield
-from vermouth.molecule import Molecule, Block, Link
+from vermouth.molecule import Molecule, Block, Link, Interaction
 from vermouth.map_parser import Mapping
 from vermouth.tests.helper_functions import equal_graphs
 
@@ -332,6 +332,7 @@ def modifications():
     mod_fg.add_node('mF', atomname='mF', PTM_atom=True)
     mod_fg.add_node('mG', atomname='mG', PTM_atom=True)
     mod_fg.add_edge('mF', 'mG')
+    mod_fg.add_interaction('bond', ['mF', 'mG'], (3, 4))
     mods['mFG'] = mod_fg
 
     mod_i = Link(force_field=FF_UNIVERSAL, name='mI')
@@ -508,3 +509,4 @@ def test_do_mapping_mods(modified_molecule, modifications):
     pprint.pprint(list(expected.edges))
 
     assert equal_graphs(expected, out, node_attrs=['atomname', 'resid', 'mapping_weights'])
+    assert out.interactions['bond'] == [Interaction(atoms=(9, 11), parameters=(3, 4), meta={})]
