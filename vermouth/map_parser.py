@@ -89,6 +89,8 @@ class Mapping:
         self.block_from = block_from.copy()
         self.block_to = block_to.copy()
         self.block_to.extra = extra
+        self.block_from.name = names
+        self.block_to.name = names
         self.references = references
         self.ff_from = ff_from
         self.ff_to = ff_to
@@ -711,11 +713,11 @@ class MappingDirector(SectionLineParser):
                 block = getattr(self.force_fields[self.ff[direction]], map_type+'s')[attrs['resname']]
                 builder_methods[direction](block)
             if direction == 'from':
-                if attrs.get('resname'):
+                if 'resname' in attrs and isinstance(attrs['resname'], str):
                     name = attrs.get('resname')
                 else:
                     name = identifier
-                self.builder.add_name(identifier)
+                self.builder.add_name(name)
             if map_type == 'modification' and 'resname' in attrs:
                 del attrs['resname']
             self.identifiers[(direction, identifier)] = attrs

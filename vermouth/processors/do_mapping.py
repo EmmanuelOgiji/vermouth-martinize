@@ -439,6 +439,7 @@ def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
                                  "atomname {}".format(modification.nodes[mod_idx]['atomname']))
             mod_to_out[mod_idx] = out_idx
             graph_out.nodes[out_idx].update(modification.nodes[mod_idx].get('replace', {}))
+        graph_out.nodes[out_idx]['modification'] = modification
 
     for mol_idx in mol_to_mod:
         for mod_idx, weight in mol_to_mod[mol_idx].items():

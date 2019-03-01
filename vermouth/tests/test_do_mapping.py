@@ -411,11 +411,22 @@ def test_mod_matches(modified_molecule, modifications):
         ({16: {'J': 1}, 17: {'mJ': 1}, 18: {'mJ2': 1}}, modifications['mJ', 'mJ2'], {}),
     ]
     pprint.pprint(found)
+    pprint.pprint(expected)
+    print([e[1].name for e in expected])
+    print([e[1].name for e in found])
     assert len(expected) == len(found)
-    for item in found:
-        assert item in expected
+    e_matches, e_mods, e_refs = zip(*expected)
+    f_matches, f_mods, f_refs = zip(*found)
 
+    for f_match in f_matches:
+        assert f_match in e_matches
+    for f_ref in f_refs:
+        assert f_ref in e_refs
+    e_mod_names = [(mod.name,) if isinstance(mod.name, str) else mod.name for mod in e_mods]
+    for f_mod in f_mods:
+        assert f_mod.name in e_mod_names
 
+    
 def test_apply_mod_mapping(modified_molecule, modifications):
     graph_out = Molecule(force_field=FF_UNIVERSAL)
     graph_out.add_nodes_from([
@@ -428,7 +439,10 @@ def test_apply_mod_mapping(modified_molecule, modifications):
     out = apply_mod_mapping(match, modified_molecule, graph_out, mol_to_out, out_to_mol)
     print(mol_to_out)
     print(out_to_mol)
-    assert graph_out.nodes[1] == modifications['mA'].nodes['mA']
+    print(graph_out.nodes[1])
+    print(modifications['mA'].nodes['mA'])
+    for key in modifications['mA'].nodes['mA']:
+        assert graph_out.nodes[1][key] == modifications['mA'].nodes['mA'][key]
     assert out == ({}, {})
     assert mol_to_out == {0: {0: 1}, 1: {1: 1}}
     assert out_to_mol == {0: {0: 1}, 1: {1: 1}}
