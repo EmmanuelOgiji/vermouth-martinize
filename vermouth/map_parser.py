@@ -516,7 +516,7 @@ class MappingDirector(SectionLineParser):
         self.identifiers = {}
         self.builder.reset()
 
-    def finalize_section(self, previous_section, closed_sections):
+    def finalize_section(self, previous_section, ended_section):
         """
         Wraps up parsing of a single mapping.
 
@@ -524,7 +524,7 @@ class MappingDirector(SectionLineParser):
         ----------
         previous_section: collections.abc.Sequence[str]
             The previously parsed section.
-        closed_sections: collections.abc.Iterable[str]
+        ended_section: collections.abc.Iterable[str]
             The just finished sections.
 
         Returns
@@ -532,7 +532,7 @@ class MappingDirector(SectionLineParser):
         Mapping
             The accumulated mapping.
         """
-        if any(closed_section in self.SECTION_ENDS for closed_section in closed_sections):
+        if any(ended in self.SECTION_ENDS for ended in ended_section):
             map_type = previous_section[0]
             mapping = self.builder.get_mapping(map_type)
             self._reset_mapping()

@@ -14,6 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Tests for the DoMapping processor
+"""
+
 from collections import defaultdict
 import pprint
 
@@ -26,28 +30,33 @@ from vermouth.molecule import Molecule, Block, Link
 from vermouth.map_parser import Mapping
 from vermouth.tests.helper_functions import equal_graphs
 
+# Pylint does *not* like pytest fixtures
+# pylint: disable=redefined-outer-name
+
+
 FF_MARTINI = vermouth.forcefield.get_native_force_field(name='martini22')
 FF_UNIVERSAL = vermouth.forcefield.get_native_force_field(name='universal')
 
 AA_MOL = Molecule(force_field=FF_UNIVERSAL)
 AA_MOL.add_nodes_from((
-        (0, {'resid': 1, 'resname': 'IPO', 'atomname': 'C1', 'chain': 'A', 'element': 'C'}),
-        (1, {'resid': 1, 'resname': 'IPO', 'atomname': 'C2', 'chain': 'A', 'element': 'C'}),
-        (2, {'resid': 1, 'resname': 'IPO', 'atomname': 'C3', 'chain': 'A', 'element': 'C'}),
-        (3, {'resid': 2, 'resname': 'IPO', 'atomname': 'C1', 'chain': 'A', 'element': 'C'}),
-        (4, {'resid': 2, 'resname': 'IPO', 'atomname': 'C2', 'chain': 'A', 'element': 'C'}),
-        (5, {'resid': 2, 'resname': 'IPO', 'atomname': 'C3', 'chain': 'A', 'element': 'C'}),
-        (6, {'resid': 3, 'resname': 'IPO', 'atomname': 'C1', 'chain': 'A', 'element': 'C'}),
-        (7, {'resid': 3, 'resname': 'IPO', 'atomname': 'C2', 'chain': 'A', 'element': 'C'}),
-        (8, {'resid': 3, 'resname': 'IPO', 'atomname': 'C3', 'chain': 'A', 'element': 'C'}),
-        ))
+    (0, {'resid': 1, 'resname': 'IPO', 'atomname': 'C1', 'chain': 'A', 'element': 'C'}),
+    (1, {'resid': 1, 'resname': 'IPO', 'atomname': 'C2', 'chain': 'A', 'element': 'C'}),
+    (2, {'resid': 1, 'resname': 'IPO', 'atomname': 'C3', 'chain': 'A', 'element': 'C'}),
+    (3, {'resid': 2, 'resname': 'IPO', 'atomname': 'C1', 'chain': 'A', 'element': 'C'}),
+    (4, {'resid': 2, 'resname': 'IPO', 'atomname': 'C2', 'chain': 'A', 'element': 'C'}),
+    (5, {'resid': 2, 'resname': 'IPO', 'atomname': 'C3', 'chain': 'A', 'element': 'C'}),
+    (6, {'resid': 3, 'resname': 'IPO', 'atomname': 'C1', 'chain': 'A', 'element': 'C'}),
+    (7, {'resid': 3, 'resname': 'IPO', 'atomname': 'C2', 'chain': 'A', 'element': 'C'}),
+    (8, {'resid': 3, 'resname': 'IPO', 'atomname': 'C3', 'chain': 'A', 'element': 'C'}),
+))
 AA_MOL.add_edges_from([(0, 1), (1, 2), (1, 3), (3, 4), (4, 5), (4, 6), (6, 7), (7, 8)])
 block_aa = Block(force_field=FF_UNIVERSAL)
 block_aa.name = 'IPO'
 block_aa.add_nodes_from((
     ('C1', {'resid': 1, 'resname': 'IPO', 'atomname': 'C1'}),
     ('C2', {'resid': 1, 'resname': 'IPO', 'atomname': 'C2'}),
-    ('C3', {'resid': 1, 'resname': 'IPO', 'atomname': 'C3'}),))
+    ('C3', {'resid': 1, 'resname': 'IPO', 'atomname': 'C3'}),
+))
 block_aa.add_edges_from([('C1', 'C2'), ('C2', 'C3')])
 
 block_cg = Block(force_field=FF_MARTINI)
@@ -69,7 +78,8 @@ block_aa.add_nodes_from((
     ('C6', {'resid': 2, 'resname': 'IPO', 'atomname': 'C3'}),
     ('C7', {'resid': 3, 'resname': 'IPO', 'atomname': 'C1'}),
     ('C8', {'resid': 3, 'resname': 'IPO', 'atomname': 'C2'}),
-    ('C9', {'resid': 3, 'resname': 'IPO', 'atomname': 'C3'}),))
+    ('C9', {'resid': 3, 'resname': 'IPO', 'atomname': 'C3'}),
+))
 block_aa.add_edges_from([('C1', 'C2'), ('C2', 'C3'), ('C2', 'C4'),
                          ('C4', 'C5'), ('C5', 'C6'), ('C5', 'C7'),
                          ('C7', 'C8'), ('C8', 'C9'),
@@ -108,7 +118,7 @@ def test_no_residue_crossing():
         (0, {'resid': 1, 'resname': 'IPO', 'atomname': 'B1', 'chain': 'A', 'charge_group': 1}),
         (1, {'resid': 2, 'resname': 'IPO', 'atomname': 'B1', 'chain': 'A', 'charge_group': 2}),
         (2, {'resid': 3, 'resname': 'IPO', 'atomname': 'B1', 'chain': 'A', 'charge_group': 3}),
-            ))
+    ))
     expected.add_edges_from(([0, 1], [1, 2]))
 
     print(cg.nodes(data=True))
@@ -128,14 +138,20 @@ def test_residue_crossing():
                'C7': {'B3': 1}, 'C8': {'B3': 1}, 'C9': {'B3': 1},
                }
     extra = ()
-    mappings = {'universal': {'martini22': {'IPO_large': Mapping(FF_UNIVERSAL.blocks['IPO_large'],
-                                                           FF_MARTINI.blocks['IPO_large'],
-                                                           mapping=mapping,
-                                                           references={},
-                                                           ff_from=FF_UNIVERSAL,
-                                                           ff_to=FF_MARTINI,
-                                                           names=('IPO', 'IPO', 'IPO'),
-                                                           extra=extra)}}}
+    mappings = {
+        'universal': {
+            'martini22': {
+                'IPO_large': Mapping(FF_UNIVERSAL.blocks['IPO_large'],
+                                     FF_MARTINI.blocks['IPO_large'],
+                                     mapping=mapping,
+                                     references={},
+                                     ff_from=FF_UNIVERSAL,
+                                     ff_to=FF_MARTINI,
+                                     names=('IPO', 'IPO', 'IPO'),
+                                     extra=extra)
+            }
+        }
+    }
 
     cg = do_mapping(AA_MOL, mappings, FF_MARTINI, attribute_keep=('chain',))
 
@@ -144,7 +160,7 @@ def test_residue_crossing():
         (0, {'resid': 1, 'resname': 'IPO_large', 'atomname': 'B1', 'chain': 'A', 'charge_group': 1}),
         (1, {'resid': 2, 'resname': 'IPO_large', 'atomname': 'B1', 'chain': 'A', 'charge_group': 1}),
         (2, {'resid': 3, 'resname': 'IPO_large', 'atomname': 'B1', 'chain': 'A', 'charge_group': 1}),
-            ))
+    ))
     expected.add_edges_from(([0, 1], [1, 2]))
 
     print(cg.nodes(data=True))
@@ -426,7 +442,7 @@ def test_mod_matches(modified_molecule, modifications):
     for f_mod in f_mods:
         assert f_mod.name in e_mod_names
 
-    
+
 def test_apply_mod_mapping(modified_molecule, modifications):
     graph_out = Molecule(force_field=FF_UNIVERSAL)
     graph_out.add_nodes_from([
@@ -451,7 +467,10 @@ def test_apply_mod_mapping(modified_molecule, modifications):
     mol_to_out[16] = {2: 1}
     out_to_mol[2] = {16: 1}
 
-    out = apply_mod_mapping(({16: {'J': 1}, 17: {'mJ': 1}, 18: {'mJ2': 1}}, modifications['mJ', 'mJ2'], {}), modified_molecule, graph_out, mol_to_out, out_to_mol)
+    out = apply_mod_mapping((
+        {16: {'J': 1}, 17: {'mJ': 1}, 18: {'mJ2': 1}},
+        modifications['mJ', 'mJ2'], {}
+    ), modified_molecule, graph_out, mol_to_out, out_to_mol)
     print(mol_to_out)
     print(out_to_mol)
     assert out == ({}, {})
@@ -478,7 +497,6 @@ def test_do_mapping_mods(modified_molecule, modifications):
                      attribute_keep=('chain', 'resid'))
     pprint.pprint(list(out.nodes(data=True)))
     pprint.pprint(list(out.edges))
-    
 
     expected = modified_molecule.copy()
     for node in expected.nodes:
@@ -488,5 +506,5 @@ def test_do_mapping_mods(modified_molecule, modifications):
     expected = nx.relabel_nodes(expected, {idx: idx+1 for idx in expected})
     pprint.pprint(list(expected.nodes(data='atomname')))
     pprint.pprint(list(expected.edges))
-    
+
     assert equal_graphs(expected, out, node_attrs=['atomname', 'resid', 'mapping_weights'])

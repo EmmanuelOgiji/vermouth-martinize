@@ -22,7 +22,6 @@ import pytest
 from vermouth.molecule import Molecule
 from vermouth.forcefield import get_native_force_field
 from vermouth import NeutralTermini
-from vermouth.tests.helper_functions import equal_graphs
 
 
 @pytest.fixture
@@ -56,15 +55,15 @@ def charged_molecule(force_field):
         (2, {'charge_group': 2, 'resid': 2, 'resname': 'ALA', 'atomname': 'BB',
              'charge': 0.0, 'atype': 'P4',
              'mapping_weights': {12: 1.0, 17: 1.0, 13: 1.0, 16: 1.0, 14: 1.0, 15: 1.0},
-             'chain': 'A', 'position': [0.45269104, 0.23552239, 0.0214209]}), 
+             'chain': 'A', 'position': [0.45269104, 0.23552239, 0.0214209]}),
         (3, {'charge_group': 3, 'resid': 3, 'resname': 'ALA', 'atomname': 'BB',
              'charge': 0.0, 'atype': 'P4',
              'mapping_weights': {22: 1.0, 27: 1.0, 23: 1.0, 26: 1.0, 24: 1.0, 25: 1.0},
-             'chain': 'A', 'position': [0.74704179, 0.45218955, -0.0214209]}), 
+             'chain': 'A', 'position': [0.74704179, 0.45218955, -0.0214209]}),
         (4, {'charge_group': 4, 'resid': 4, 'resname': 'ALA', 'atomname': 'BB',
              'charge': 0.0, 'atype': 'P4',
              'mapping_weights': {32: 1.0, 37: 1.0, 33: 1.0, 36: 1.0, 34: 1.0, 35: 1.0},
-             'chain': 'A', 'position': [1.07289104, 0.61778657, 0.0214209]}), 
+             'chain': 'A', 'position': [1.07289104, 0.61778657, 0.0214209]}),
         (5, {'charge_group': 5, 'resid': 5, 'resname': 'ALA', 'atomname': 'BB',
              'charge': -1, 'atype': 'Qa',
              'modification': force_field.modifications['C-ter'],
@@ -86,7 +85,7 @@ def neutral_molecule(force_field):
         (1, {'charge_group': 1, 'resid': 1, 'resname': 'ALA', 'atomname': 'BB',
              'charge': 0, 'atype': 'P5',
              'modification': force_field.modifications['N-ter'],
-             'mapping_weights': {0: 1, 5: 1, 1: 1, 4: 1.0, 2: 1, 3: 1, 6: 1, 7: 1}, 
+             'mapping_weights': {0: 1, 5: 1, 1: 1, 4: 1.0, 2: 1, 3: 1, 6: 1, 7: 1},
              'chain': 'A', 'position': [0.12170435, 0.06658551, -0.0208]}),
         (2, {'charge_group': 2, 'resid': 2, 'resname': 'ALA', 'atomname': 'BB',
              'charge': 0.0, 'atype': 'P4',
@@ -99,12 +98,12 @@ def neutral_molecule(force_field):
         (4, {'charge_group': 4, 'resid': 4, 'resname': 'ALA', 'atomname': 'BB',
              'charge': 0.0, 'atype': 'P4',
              'mapping_weights': {32: 1.0, 37: 1.0, 33: 1.0, 36: 1.0, 34: 1.0, 35: 1.0},
-             'chain': 'A', 'position': [1.07289104, 0.61778657, 0.0214209 ]}),
+             'chain': 'A', 'position': [1.07289104, 0.61778657, 0.0214209]}),
         (5, {'charge_group': 5, 'resid': 5, 'resname': 'ALA', 'atomname': 'BB',
              'charge': 0, 'atype': 'P5',
              'modification': force_field.modifications['C-ter'],
              'mapping_weights': {42: 1.0, 48: 1.0, 43: 1, 47: 1.0, 44: 1, 45: 1, 46: 1},
-             'chain': 'A', 'position': [ 1.40449639, 0.85126265, -0.01729157]})
+             'chain': 'A', 'position': [1.40449639, 0.85126265, -0.01729157]})
     ]
     mol = Molecule()
     mol.add_nodes_from(nodes)
