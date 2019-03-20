@@ -88,7 +88,7 @@ def do_average_bead(molecule, ignore_missing_graphs=False, weight=None):
                 if subnode.get('position') is not None
             ])
             if abs(sum(weights)) < 1e-7:
-                node['position'] = np.nan
+                node['position'] = np.array([np.nan]*positions.shape[1], dtype=float)
             else:
                 node['position'] = np.average(positions, axis=0, weights=weights)
 
