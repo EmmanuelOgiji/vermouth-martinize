@@ -435,8 +435,9 @@ def apply_mod_mapping(match, molecule, graph_out, mol_to_out, out_to_mol):
             else:  # No break, so no matching node found
                 raise ValueError("No node found in molecule with "
                                  "atomname {}".format(modification.nodes[mod_idx]['atomname']))
-            mod_to_out[mod_idx] = out_idx
-            graph_out.nodes[out_idx].update(modification.nodes[mod_idx].get('replace', {}))
+            # Undefined loop variable is guarded against by the else-raise above
+            mod_to_out[mod_idx] = out_idx  # pylint: disable=undefined-loop-variable
+            graph_out.nodes[out_idx].update(modification.nodes[mod_idx].get('replace', {})) # pylint: disable=undefined-loop-variable
         graph_out.nodes[out_idx]['modification'] = modification
 
     for mol_idx in mol_to_mod:

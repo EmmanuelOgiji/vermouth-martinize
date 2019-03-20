@@ -172,6 +172,9 @@ def test_residue_crossing():
 
 
 def _map_weights(mapping):
+    """
+    Get the weights associated with a mapping
+    """
     inv_map = defaultdict(list)
     for from_, tos in mapping.items():
         for to in tos:
@@ -309,12 +312,18 @@ def test_peptide():
     ([1, 2, 3], [[1, 2], [4]], None),
 ))
 def test_cover(to_cover, options, expected):
+    """
+    Test the cover function
+    """
     output = cover(to_cover, options)
     assert output == expected
 
 
 @pytest.fixture
 def modifications():
+    """
+    Provides modifications
+    """
     mods = {}
     mod_a = Link(force_field=FF_UNIVERSAL, name='mA')
     mod_a.add_node('mA', atomname='mA', PTM_atom=True)
@@ -359,6 +368,9 @@ def modifications():
 
 @pytest.fixture
 def modified_molecule(modifications):
+    """
+    Provides a molecule with modifications
+    """
     mol = Molecule(force_field=FF_UNIVERSAL)
     mol.add_nodes_from(enumerate((
         # Lone PTM
@@ -403,6 +415,9 @@ def modified_molecule(modifications):
 
 
 def test_mod_matches(modified_molecule, modifications):
+    """
+    Test modification matches
+    """
     mappings = []
     for name in 'ABCDEFGHIJ':
         block = Block(force_field=FF_UNIVERSAL, name=name)
@@ -445,6 +460,9 @@ def test_mod_matches(modified_molecule, modifications):
 
 
 def test_apply_mod_mapping(modified_molecule, modifications):
+    """
+    Test apply_mod_mapping
+    """
     graph_out = Molecule(force_field=FF_UNIVERSAL)
     graph_out.add_nodes_from([
         (0, {'atomname': 'A', 'resid': 1})
@@ -480,6 +498,9 @@ def test_apply_mod_mapping(modified_molecule, modifications):
 
 
 def test_do_mapping_mods(modified_molecule, modifications):
+    """
+    Test do_mapping on a molecule with modifications
+    """
     mappings = {}
     for name in 'ABCDEFGHIJ':
         block = Block(force_field=FF_UNIVERSAL, name=name)
