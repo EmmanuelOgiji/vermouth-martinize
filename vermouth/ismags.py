@@ -415,25 +415,8 @@ class ISMAGS:
         candidates[sgn] = frozenset([sgn_candidates])
         for gn in sgn_candidates:
             # We're going to try to map sgn to gn.
-
-            # First, let's see if that would violate a constraint.
-            # It's probably better to integrate the constraints infinding the
-            # candidates below, *and* somehow propagating them. That *should*
-            # reduce the search space. Of course it won't matter for asymmetric
-            # subgraphs.
-            violation = False
-            for constraint in constraints:
-                low, high = constraint
-                # gn violates upper bound
-                too_high = low == sgn and high in mapping and gn > mapping[high]
-                # gn violates lower bound
-                too_low = high == sgn and low in mapping and gn < mapping[low]
-                if too_high or too_low:
-                    violation = True
-                    break
-            if violation or (gn in mapping.values()) or (sgn not in to_be_mapped):
-                # This either violates a constraint, or gn is already mapped to
-                # something
+            if gn in mapping.values() or sgn not in to_be_mapped:
+                # gn is already mapped to something
                 # Don't measure coverage for this line.
                 # See https://github.com/nedbat/coveragepy/issues/198
                 continue  # pragma: no cover
@@ -465,6 +448,18 @@ class ISMAGS:
                 # a bit clunky. We can't do .add, and + also doesn't work. We
                 # could do |, but I deem union to be clearer.
                 new_candidates[sgn2] = new_candidates[sgn2].union([frozenset(gn2_options)])
+                # Propagate the constraints. This should reduce the search space
+                # by first dealing with highly symmetric nodes, since those will
+                # have less candidates.
+                for constraint in constraints:
+                    if constraint == (sgn, sgn2):
+                        gn2_options = {gn2 for gn2 in self.graph if gn2 > gn}
+                    elif constraint == (sgn2, sgn):
+                        gn2_options = {gn2 for gn2 in self.graph if gn2 < gn}
+                    else:
+                        continue
+                    new_candidates[sgn2] = new_candidates[sgn2].union([frozenset(gn2_options)])
+
             # The next node is the one that is unmapped and has fewest
             # candidates
             # Pylint disables because it's a one-shot function.
