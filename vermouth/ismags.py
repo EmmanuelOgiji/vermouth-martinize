@@ -105,6 +105,11 @@ import itertools
 from .utils import are_all_equal
 
 
+# There are a number of "pragma: no cover" statements in this code, because
+# their coverage would otherwise not be measure accurately.
+# See https://github.com/nedbat/coveragepy/issues/198
+
+
 class ISMAGS:
     """
     Implements the ISMAGS subgraph matching algorith. [1]_ ISMAGS stands for
@@ -417,8 +422,6 @@ class ISMAGS:
             # We're going to try to map sgn to gn.
             if gn in mapping.values() or sgn not in to_be_mapped:
                 # gn is already mapped to something
-                # Don't measure coverage for this line.
-                # See https://github.com/nedbat/coveragepy/issues/198
                 continue  # pragma: no cover
 
             # REDUCTION and COMBINATION
@@ -427,11 +430,12 @@ class ISMAGS:
             if to_be_mapped == set(mapping.keys()):
                 yield {v: k for k, v in mapping.items()}
                 continue
+            left_to_map = to_be_mapped - set(mapping.keys())
 
             new_candidates = candidates.copy()
             sgn_neighbours = set(self.subgraph[sgn])
             not_gn_neighbours = set(self.graph.nodes) - set(self.graph[gn])
-            for sgn2 in self.subgraph:
+            for sgn2 in left_to_map:
                 if sgn2 not in sgn_neighbours:
                     gn2_options = not_gn_neighbours
                 else:
@@ -457,13 +461,13 @@ class ISMAGS:
                     elif constraint == (sgn2, sgn):
                         gn2_options = {gn2 for gn2 in self.graph if gn2 < gn}
                     else:
-                        continue
+                        continue  # pragma: no cover
                     new_candidates[sgn2] = new_candidates[sgn2].union([frozenset(gn2_options)])
 
             # The next node is the one that is unmapped and has fewest
             # candidates
             # Pylint disables because it's a one-shot function.
-            next_sgn = min(to_be_mapped - set(mapping.keys()),
+            next_sgn = min(left_to_map,
                            key=lambda n: min(new_candidates[n], key=len))  # pylint: disable=cell-var-from-loop
             yield from self._map_nodes(next_sgn,
                                        new_candidates,
@@ -891,10 +895,10 @@ class ISMAGS:
         for node2 in sorted(b_partition):
             if len(b_partition) == 1:
                 # Can never result in symmetry
-                continue
+                continue  # pragma: no cover
             if node != node2 and any(node in orbit and node2 in orbit for orbit in orbits):
                 # Orbit prune branch
-                continue
+                continue  # pragma: no cover
             # REDUCTION
             # Couple node to node2
             partitions = self._couple_nodes(top_partitions, bottom_partitions,
