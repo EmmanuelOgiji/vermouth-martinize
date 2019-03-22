@@ -394,12 +394,12 @@ class ISMAGS:
         """
         Turn cosets into constraints.
         """
-        constraints = []
+        constraints = set()
         for node_i, node_ts in cosets.items():
             for node_t in node_ts:
                 if node_i != node_t:
                     # Node i must be smaller than node t.
-                    constraints.append((node_i, node_t))
+                    constraints.add((node_i, node_t))
         return constraints
 
     def _map_nodes(self, sgn, candidates, constraints, mapping=None, to_be_mapped=None):
@@ -455,14 +455,13 @@ class ISMAGS:
                 # Propagate the constraints. This should reduce the search space
                 # by first dealing with highly symmetric nodes, since those will
                 # have less candidates.
-                for constraint in constraints:
-                    if constraint == (sgn, sgn2):
-                        gn2_options = {gn2 for gn2 in self.graph if gn2 > gn}
-                    elif constraint == (sgn2, sgn):
-                        gn2_options = {gn2 for gn2 in self.graph if gn2 < gn}
-                    else:
-                        continue  # pragma: no cover
-                    new_candidates[sgn2] = new_candidates[sgn2].union([frozenset(gn2_options)])
+                if (sgn, sgn2) in constraints:
+                    gn2_options = {gn2 for gn2 in self.graph if gn2 > gn}
+                elif (sgn2, sgn) in constraints:
+                    gn2_options = {gn2 for gn2 in self.graph if gn2 < gn}
+                else:
+                    continue  # pragma: no cover
+                new_candidates[sgn2] = new_candidates[sgn2].union([frozenset(gn2_options)])
 
             # The next node is the one that is unmapped and has fewest
             # candidates
