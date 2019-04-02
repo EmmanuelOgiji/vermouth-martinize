@@ -559,7 +559,7 @@ class ISMAGS:
         .. automethod:: find_isomorphisms
         """
         if len(self.graph) == len(self.subgraph):
-            yield from self.subgraph_isomorphisms_iter()
+            yield from self.subgraph_isomorphisms_iter(symmetry=symmetry)
 
     def subgraph_isomorphisms_iter(self, symmetry=True):
         """
